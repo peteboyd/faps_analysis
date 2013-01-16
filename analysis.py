@@ -36,17 +36,18 @@ class CSV(dict):
     def read_from_csv_multiple(self):
         """Reads in a file, stores data in memory."""
         filestream = open(self.filename, "r")
-        headings = filestream.readline().strip("#").split(",")
+        headings = filestream.readline().lstrip("#").split(",")
         mofind = headings.index(self._mof_name_column)
         uptind = headings.index(self._uptake_column)
         # read in the first line of the file as the headings
         # currently assumes only one uptake value at a statepoint
         for line in filestream:
             parsed = line.split(",")
-            mofname = parsed[mofind].rstrip("-CO2.csv")
+            mofname = parsed[mofind].strip()
+            if mofname.endswith("-CO2.csv"):
+                mofname = mofname[:-8]
             uptake = parsed[uptind]
             self.setdefault(mofname, {})["old_uptake"] = float(uptake)
-
         filestream.close()
 
     def read_from_csv_single(self, T=None, P=None):
@@ -68,7 +69,8 @@ class CSV(dict):
             self['new_uptake']
         except KeyError:
             self['new_uptake'] = None
-            mofname = self.filename.rstrip("-CO2.csv")
+            if mofname.endswith("-CO2.csv"):
+                mofname = mofname[:-8]
             print "ERROR: Could not find the uptake values for %s"%(mofname)
         filestream.close()
 
@@ -115,11 +117,17 @@ class MOFlist(list):
 
     def __init__(self, filename):
         filestream = open(filename, "r")
-        for line in filename:
+        for line in filestream:
+            line = line.strip()
+            line = line.split()
+            line = line[0]
             if "sym" in line:
                 line.lstrip("#")
-                line.rstrip("-CO2.csv")
+                if line.endswith("-CO2.csv"):
+                    line = line[:-8]
                 self.append(line)
+
+        filestream.close()
 
 class Selector(object):
     """
@@ -440,7 +448,10 @@ class GrabNewData(object):
     def write_data(self, filename="default.report.csv"):
         """Write all MOF data to a csv file."""
         os.chdir(self.pwd)
-        basename = filename.rstrip('.csv')
+        if filename.endswith(".csv"):
+            basename = filename[:-4]
+        else:
+            basename = filename
         done = False
         count = 0
         # make sure there's no overwriting, goes up to 99
@@ -449,10 +460,10 @@ class GrabNewData(object):
             filename = basename + "%02d.csv"%(count)
         outstream = open(filename, "w")
         if self.extended:
-            header = "MOFname,old_uptake,new_uptake,Functional_grp1" +\
+            header = "MOFname,old_uptake,new_uptake,Functional_grp1," +\
                     "Functional_grp2,grp1_replacements,grp2_replacements\n"
         else:
-            header = "MOFname,old_uptake,new_uptake,Functional_grp1" +\
+            header = "MOFname,old_uptake,new_uptake,Functional_grp1," +\
                     "Functional_grp2\n"
 
         outstream.writelines(header)
@@ -489,7 +500,8 @@ class GrabNewData(object):
         outstream.close()
 
 def parse_mof_data(mofname):
-    mofname = mofname.rstrip("-CO2.csv")
+    if mofname.endswith("-CO2.csv"):
+        mofname = mofname[:-8]
     mofparse = mofname.split("_")
     data = mofparse[5].split(".")
     def metal_index():
@@ -538,9 +550,9 @@ def create_a_dataset(csvfile=None, sqlfile=None, metal=None):
     sel = Selector(mof, metal=metal)
     sel.trim_organics()
     sel.trim_non_existing()
-    #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
-    #                                    "NO2", "HCO", "NH2"])
-    sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
+    sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
+                                        "NO2", "HCO", "NH2"])
+    #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
 
 def write_report(directory=None, sqlfile=None, csvfile=None):
     """Write a report on some new uptake data located in 'directory' based
@@ -557,8 +569,8 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
 
 def main():
     create_a_dataset(csvfile="combined.csv", 
-                     sqlfile="vsql.sqlout",
-                     metal="V")
+                     sqlfile="basql.sqlout",
+                     metal="Ba")
 
     #write_report(directory='wilmer_qeq_gulp_optimized',
     #             sqlfile='allsql.sqlout',
