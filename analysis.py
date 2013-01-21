@@ -196,10 +196,10 @@ class Selector(object):
             "SO3H"
             ]
 
-    def __init__(self, mof_dic, metal=None, weight=False):
+    def __init__(self, mof_dic, metal=None, weight=False, ignore='used_mofs'):
         self.mof_dic = mof_dic
         self.weight = weight
-        used_mofs = MOFlist("used_mofs")
+        used_mofs = MOFlist(ignore)
         # remove mofs in the dictionary which have already been used
         for mof in used_mofs:
             try:
@@ -517,7 +517,6 @@ class GrabNewData(object):
             basename = filename[:-4]
         else:
             basename = filename
-        done = False
         count = 0
         # make sure there's no overwriting, goes up to 99
         while os.path.isfile(filename):
@@ -573,8 +572,10 @@ class CommandLine(object):
 
     def command_options(self):
         usage = "%prog [options]\n" + \
-                "%prog -r -M Cu -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
-                " -c Cu_dataset_q0.csv"
+                "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
+                " -c Cu_dataset.csv\n" + \
+                "%prog -s -M Cu -n F,Cl,Br,I,SO3H -s cusql.sqlout" +\
+                "-G 150000 -i used_mofs -c Cu_dataset.csv"
         parser = OptionParser(usage=usage)
         parser.add_option("-r", "--report", action="store_true",
                           dest="report",
@@ -593,7 +594,7 @@ class CommandLine(object):
                           help="location of sql file containing mof "+
                                "functionalizations.")
         parser.add_option("-i", "--ignore", action="store", type="string",
-                           dest="ignorefile",
+                           dest="ignorefile", default='used_mofs',
                            help="location of list of MOFs to ignore in sampling.")
         parser.add_option("-x", "--excludelist", action="store", type="string",
                           dest="exclude",
@@ -612,11 +613,14 @@ class CommandLine(object):
                           dest="metal",
                           help="specify metals to generate dataset. Current" +
                           " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni") 
-
         parser.add_option("-G", "--gridpoints", action="store", type="int",
                           dest="maxgridpts",
                           help="specify the max number of grid points to "+\
                                "allow the structures to be chosen")
+        parser.add_option("-e", "--extract", action="store_true", 
+                          dest="extract",
+                          help="write a report on a list of MOFs which" + \
+                               "contains counting of functional groups etc.")
 
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
@@ -823,7 +827,8 @@ def pair_csv_fnl(mof, fnl):
     del fnl
 
 def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
-                     inclusive=None, exclude=None, gridmax=None):
+                     inclusive=None, exclude=None, gridmax=None,
+                     ignore=None):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
@@ -832,15 +837,19 @@ def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
     mof.read_from_csv_multiple()
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mof, fnl)
-    sel = Selector(mof, metal=metal)
+    sel = Selector(mof, metal=metal, ignore=ignore)
     sel.trim_organics()
     sel.trim_non_existing()
     if exclude and inclusive:
-        sel.random_select(inclusive=inclusive, exclude=exclude, gridmax=gridmax)
+        exclude = exclude
+        inclusive = inclusive
     elif exclude and inclusive is None:
-        sel.random_select(exclude=exclude, gridmax=gridmax)
+        exclude = exclude
+        inclusive = []
     elif inclusive and exclude is None:
-        sel.random_select(inclusive=inclusive, gridmax=gridmax)
+        inclusive = inclusive
+        exclude = []
+    sel.random_select(inclusive=inclusive, exclude=exclude)
     #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
     #                                    "NO2", "HCO", "NH2"])
     #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
@@ -859,6 +868,151 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     basename = ".".join(directory.split("/"))
     dir = os.getcwd() 
     data.write_data(filename=dir + "/" + basename + ".report.csv")
+
+def extract_info(file=None, sqlfile=None, csvfile=None):
+    """Extract as much information from a list of mofnames, and provide
+    an ammended report with the findings.
+
+    """
+    all_mofs = CSV(csvfile)
+    all_fnls = FunctionalGroups(sqlfile)
+    pair_csv_fnl(all_mofs, all_fnls)
+    mofs = MOFlist(file)
+    mof_dat = {}
+    for mof in mofs:
+        try:
+            data = all_mofs[mof]
+            mof_dat[mof] = data
+        except KeyError:
+            print("ERROR: could not find data for %s"%mof)
+    def analyse_data():
+        fnl_count = {}
+        fnl_pair = {}
+        organic_count = {}
+        metal_count = {}
+        org_pair_count = {}
+        full_mof_count = {}
+        for mof in mof_dat.keys():
+            met, org1, org2, top, junk = parse_mof_data(mof)
+            stuff = mof_dat[mof]
+            fnls = stuff['functional_groups'].keys()
+            if len(fnls) == 1:
+                fnl1 = fnls[0]
+                fnl2 = None
+                fnl_count.setdefault(fnl1, 0) 
+                fnl_count[fnl1] += 1
+            elif len(fnls) == 2:
+                fnl1, fnl2 = fnls
+                fnl_count.setdefault(fnl1, 0)
+                fnl_count[fnl1] += 1
+                fnl_count.setdefault(fnl2, 0)
+                fnl_count[fnl2] += 1
+                pair = sorted([fnl2, fnl2])
+                fnl_pair.setdefault(tuple(pair), 0) 
+                fnl_pair[tuple(pair)] += 1
+            metal_count.setdefault(met(), 0)
+            metal_count[met()] += 1
+            if org1() == org2():
+                organic_count.setdefault(org1(), 0) 
+                organci_count[org1()] += 1
+            else:
+                organic_count.setdefault(org1(), 0)
+                organic_count[org1()] += 1
+                organic_count.setdefault(org2(), 0) 
+                organic_count[org2()] += 1
+                pair = sorted([org1(), org2()])
+                org_pair_count.setdefault(tuple(pair), 0)
+                org_pair_count[tuple(pair)] += 1
+            fullmof = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
+            full_mof_count.setdefault(fullmof, 0) 
+            full_mof_count[fullmof] += 1
+
+    def write_overall_csv():
+        if file.endswith(".csv"):
+            basename = file[:-4]
+        else:
+            basename = file
+        count = 0
+        filename = basename + ".overall_report.csv"
+        # make sure there's no overwriting, goes up to 99
+        while os.path.isfile(filename):
+            count += 1
+            filename = basename + ".overall_report.%02d.csv"%(count)
+        outstream = open(filename, "w")
+        outstream.writelines("functional_group,count")
+        for fnl, count in fnl_count.items():
+            outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
+        outstream.writelines("functional_group1,functional_group2,count")
+        for pair, count in fnl_pair.items():
+            outstream.writelines("%s,%s,%i"%(pair[0], pair[1], count))
+        outstream.writelines("organic_index,count")
+        for org, count in organic_count.items():
+            outstream.writelines("%i,%i"%(org, count))
+        outstream.writelines("organic_index1,organic_index2,count")
+        for orgs, count in org_pair_count.items():
+            outstream.writelines("%i,%i,%i"%(orgs[0], orgs[1], count))
+        outstream.writelines("metal_index,count")
+        for met, count in metal_count.items():
+            outstream.writelines("%i,%i"%(met, count))
+        outstream.writelines("MOFname,count")
+        for mof, count in full_mof_count.items():
+            outstream.writelines("%s,%i"%(mof, count))
+        outstream.close()
+
+    def write_specific_csv():
+        if file.endswith(".csv"):
+            basename = file[:-4]
+        else:
+            basename = file
+        count = 0
+        filename = basename + ".specific_report.csv"
+        # make sure there's no overwriting, goes up to 99
+        while os.path.isfile(filename):
+            count += 1
+            filename = basename + ".specific_report.%02d.csv"%(count)
+        outstream = open(filename, "w")
+        header = "MOFname,functional_group1,functional_group2," +\
+                "mof_occur,metal_occur,org1_occur,org2_occur," +\
+                "org_pair_occur,fnl1_occur,fnl2_occur," +\
+                "fnl_pair_occur\n"
+        outstream.writelines(header)
+        for mof, vals in mof_dat.items():
+            met, org1, org2, top, fnl = parse_mof_data(mof)
+            fnls = vals['functional_groups'].keys()
+            # grab all the data for each
+            fnls = sorted(fnls)
+            if len(fnls) == 1:
+               fnl1 = fnls[0]
+               fnl2 = None
+               fnl1_occur = fnl_count[fnl1]
+               fnl_pair_occur = fnl_count[fnl1]
+               fnl2_occur = 0
+            elif len(fnls) == 2:
+               fnl1, fnl2 = fnls
+               fnl1_occur = fnl_count[fnl1]
+               fnl2_occur = fnl_count[fnl2]
+               pair = sorted([fnl1, fnl2])
+               fnl_pair_occur = fnl_pair[tuple(pair)]
+            met_occur = metal_count[met()]
+            orgs = sorted([org1(), org2()])
+            if len(set(orgs)) == 1:
+                org1_occur = organic_count[org1()]
+                org2_occur = 0
+                org_pair_occur = organic_count[org1()]
+            elif len(set(orgs)) == 2:
+                org1_occur = organic_count[org1()]
+                org2_occur = organic_count[org2()]
+                org_pair_occur = org_pair_count[tuple(orgs)]
+
+            mof_abbrev = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
+            mof_occur = full_mof_count[mof_abbrev]
+            outstream.writelines("%s,%s,%s,%i,%i,%i,%i,%i,%i,%i,%i\n"
+                    %(mof,fnl1,fnl2,mof_occur,met_occur,org1_occur,
+                        org2_occur,org_pair_occur,fnl1_occur,fnl2_occur,
+                        fnl_pair_occur))
+        outstream.close()
+
+    return analyse_data, write_overall_csv, write_specific_csv
 
 def main():
     cmd = CommandLine()
@@ -894,8 +1048,9 @@ def main():
                          sqlfile=cmd.options.sqlname,
                          metal=cmd.options.metal,
                          inclusive=inclusive,
-                         exclude=exclude
-                         gridmax=cmd.options.maxgridpts)
+                         exclude=exclude,
+                         gridmax=cmd.options.maxgridpts,
+                         ignore=cmd.options.ignorefile)
                          
     if cmd.options.report:
         if cmd.options.dirname:
@@ -924,6 +1079,33 @@ def main():
         write_report(directory=cmd.options.dirname,
                      sqlfile=cmd.options.sqlname,
                      csvfile=cmd.options.csvfilename)
+
+    if cmd.options.extract:
+        if cmd.options.csvfilename:
+            test = os.path.isfile(cmd.options.csvfilename)
+            if not test:
+                print ("ERROR: could not find the .csv file")
+                sys.exit()
+        else:
+            print("ERROR: .csv filename not set in the command line")
+            sys.exit()
+        if cmd.options.sqlname:
+            test = os.path.isfile(cmd.options.sqlname)
+            if not test:
+                print("ERROR: could not find the sql file")
+                sys.exit()
+        else:
+            print("ERROR: sql file not set in the command line")
+        if not os.path.isfile(cmd.options.extract):
+            print("ERROR: could not find the mof file")
+            sys.exit()
+
+        an, over, spec = extract_info(cmd.options.extract,
+                     sqlfile=cmd.options.sqlname,
+                     csvfile=cmd.options.csvfilename)
+        an()
+        over()
+        spec()
 
 if __name__ == "__main__":
     main()
