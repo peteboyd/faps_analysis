@@ -9,17 +9,12 @@ certain criteria.
 import os
 import sys
 import random
-import math
-# include readcsv stuff from read_csv.py
-# read in csv file
-# read in sql file
-# match mofs with their functionalization
-# remove mofs without actual structures.
-# perform random selection stuff
-# create zip file containing directory structure and .cif files
-# create a report on the selection.
+from math import cos, sin, sqrt, pi, exp
+import numpy as np
+from optparse import OptionParser
 
-# include a dictionary containing mofnames as the key and uptakes as the value.
+DEG2RAD = pi / 180.0
+global LOOKUPDIR
 
 class CSV(dict):
     """
@@ -36,9 +31,12 @@ class CSV(dict):
     def read_from_csv_multiple(self):
         """Reads in a file, stores data in memory."""
         filestream = open(self.filename, "r")
-        headings = filestream.readline().lstrip("#").split(",")
+        headings = filestream.readline().strip().lstrip("#").split(",")
         mofind = headings.index(self._mof_name_column)
-        uptind = headings.index(self._uptake_column)
+        try:
+            uptind = headings.index(self._uptake_column)
+        except ValueError:
+            pass
         # read in the first line of the file as the headings
         # currently assumes only one uptake value at a statepoint
         for line in filestream:
@@ -46,7 +44,10 @@ class CSV(dict):
             mofname = parsed[mofind].strip()
             if mofname.endswith("-CO2.csv"):
                 mofname = mofname[:-8]
-            uptake = parsed[uptind]
+            try:
+                uptake = parsed[uptind]
+            except UnboundLocalError:
+                uptake = 0.
             self.setdefault(mofname, {})["old_uptake"] = float(uptake)
         filestream.close()
 
@@ -152,6 +153,7 @@ class Selector(object):
             29,
             28,
             9,
+            15,
             (2, 11),
             (20, 23),
             (24, 27),
@@ -233,12 +235,13 @@ class Selector(object):
                     (orgpair in self.bad_organics):
                 self.mof_dic.pop(mof)
 
-    def trim_non_existing(self, dir="/shared_scratch/pboyd/OUTCIF/FinalCif"):
+    def trim_non_existing(self):
         """Reduces the number of mofs in the mof_dic based on if the actual
         .cif file for the MOF exist in a specified directory. If it does not,
         the mof is deleted from the dictionary.
 
         """
+        dir = LOOKUPDIR
         print "Checking %s for all mofs..."%(dir)
         temp_moflist = self.mof_dic.keys()
         for mof in temp_moflist:
@@ -298,7 +301,7 @@ class Selector(object):
                         uptake = 0.0
                     if self.weight:
                         # perform a weighted check against the uptake.
-                        if math.exp(-uptake/4.) < random.random():
+                        if exp(-uptake/4.) < random.random():
                             skip = True
 
                     if group_count >= group_max:
@@ -339,7 +342,7 @@ class Selector(object):
                     uptake = 0.0
                 # perform a weighted check against the uptake.
                 if self.weight:
-                    if math.exp(-uptake/4.) < random.random():
+                    if exp(-uptake/4.) < random.random():
                         skip = True
                 for i in groups:
                     if i in exclude:
@@ -499,6 +502,143 @@ class GrabNewData(object):
             outstream.writelines(line)
         outstream.close()
 
+class CommandLine(object):
+    """Parse command line options and communicate directives to the program."""
+
+    def __init__(self):
+        self.commands = {}
+        self.command_options()
+
+    def command_options(self):
+        usage = "%prog [options]\n" + \
+                "%prog -r -M Cu -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
+                " -c Cu_dataset_q0.csv"
+        parser = OptionParser(usage=usage)
+        parser.add_option("-r", "--report", action="store_true",
+                          dest="report",
+                          help="issue a report based on some calculated data.")
+        parser.add_option("-s", "--dataset", action="store_true",
+                          dest="dataset",
+                          help="generate a dataset of randomly selected MOFs.")
+        parser.add_option("-c", "--csvfile", action="store", type="string",
+                          dest="csvfilename",
+                          help="location of csv file with existing data in it.")
+        parser.add_option("-d", "--directory", action="store",
+                          dest="dirname",
+                          help="location of directory containing .cif files.")
+        parser.add_option("-q", "--sqlfile", action="store", type="string",
+                          dest="sqlname",
+                          help="location of sql file containing mof "+
+                               "functionalizations.")
+        parser.add_option("-i", "--ignore", action="store", type="string",
+                           dest="ignorefile",
+                           help="location of list of MOFs to ignore in sampling.")
+        parser.add_option("-x", "--excludelist", action="store", type="string",
+                          dest="exclude",
+                          help="comma (,) delimited list of functional groups"+
+                               " to exclude from the sampling")
+        parser.add_option("-n", "--inclusivelist", action="store", 
+                          type="string",
+                          dest="inclusive",
+                          help="comma (,) delimited list of functional groups"+
+                               " to sample, excluding all others.")
+        parser.add_option("-L", "--lookupdir", action="store", type="string",
+                          dest="lookup", 
+                          default="/shared_scratch/pboyd/OUTCIF/FinalCif",
+                          help="lookup directory with all the output cifs.")
+        parser.add_option("-M", "--metal", action="store", type="string",
+                          dest="metal",
+                          help="specify metals to generate dataset. Current" +
+                          " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni") 
+
+        (local_options, local_args) = parser.parse_args()
+        self.options = local_options
+
+class CifFile(object):
+    """This class will grab data from the cif file such as the
+    cartesian atom coordinates and the cell vectors.
+    
+    """
+
+    def __init__(self, moffilename, code_loc="/home/pboyd"):
+        """Read in the mof file and parse the data to write a .geo file
+        for the egulp method.
+
+        """
+        self.mofdata = parse_cif(moffilename)
+        self.code_loc = code_loc
+        self.cell = self._grab_cell_vectors()
+        self.atom_symbols = self._grab_atom_names()
+        self.cart_coordinates = self._grab_cartesians()
+
+    def _grab_cell_vectors(self):
+        """Select the lattice parameters from the mofdata and convert to a
+        3x3 array of cell vectors.
+
+        """
+        a = float(self.mofdata['_cell_length_a'])
+        b = float(self.mofdata['_cell_length_b'])
+        c = float(self.mofdata['_cell_length_c'])
+        alpha = DEG2RAD * float(self.mofdata['_cell_angle_alpha'])
+        beta = DEG2RAD * float(self.mofdata['_cell_angle_beta'])
+        gamma = DEG2RAD * float(self.mofdata['_cell_angle_gamma'])
+        veca = a * np.array([1., 0., 0.])
+        vecb = np.array([b * cos(gamma), b * sin(gamma), 0.])
+        c_x = c * cos(beta)
+        c_y = c * (cos(alpha) - cos(gamma)*cos(beta)) / sin(gamma) 
+        vecc = np.array([c_x, c_y,
+                         sqrt(c**2 - c_x**2 - c_y**2)])
+        return np.array([veca, vecb, vecc])
+
+    def _grab_atom_names(self):
+        """Retun a tuple of the atom names."""
+        return tuple(self.mofdata['_atom_site_type_symbol'])
+
+    def _grab_cartesians(self):
+        """Return a tuple of coordinates of all the atoms."""
+        coordinates = []
+        for x, y, z in zip(self.mofdata['_atom_site_fract_x'],\
+                       self.mofdata['_atom_site_fract_y'],\
+                       self.mofdata['_atom_site_fract_z']):
+            scaled_pos = np.array([float(x), float(y), float(z)])
+            coordinates.append(tuple(np.dot(scaled_pos, self.cell)))
+        return tuple(coordinates)
+
+def parse_cif(moffilename):
+    """Return a dictionary containing parsed information."""
+    cifstream = open(moffilename, "r")
+    cifdata = {}
+    loopindices = {}
+    loopcount = 0
+    loopread = False
+    for line in cifstream:
+        line = line.strip()
+        if not loopread and line.startswith("_"):
+            parsedline = line.split()
+            cifdata[parsedline[0]] = parsedline[1]
+        if loopread and line.startswith("_"):
+            loopindices[loopcount] = line
+            cifdata[line] = []
+            loopcount += 1
+        # append data to the appropriate heading
+        elif loopread:
+            parsedline = line.split()
+            # pretty crappy check to see if we're on a line of data
+            if len(parsedline) == loopcount:
+                for ind, entry in enumerate(parsedline):
+                    cifdataentry = loopindices[ind]
+                    cifdata[cifdataentry].append(entry)
+            else:
+                loopread = False
+
+        elif "loop_" in line:
+            loopindices = {}
+            loopcount = 0
+            loopread = True
+    cifstream.close()
+    return cifdata 
+
+
 def parse_mof_data(mofname):
     if mofname.endswith("-CO2.csv"):
         mofname = mofname[:-8]
@@ -538,7 +678,8 @@ def pair_csv_fnl(mof, fnl):
 
     del fnl
 
-def create_a_dataset(csvfile=None, sqlfile=None, metal=None):
+def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
+                     inclusive=None, exclude=None):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
@@ -565,16 +706,69 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     pair_csv_fnl(mofs, fnl)
     data = GrabNewData(mofs, basedir=directory, extended=False)
     data.grab_data()
-    data.write_data(filename=directory + ".report.csv")
+    basename = ".".join(directory.split("/"))
+    dir = os.getcwd() 
+    data.write_data(filename=dir + "/" + basename + ".report.csv")
 
 def main():
-    create_a_dataset(csvfile="combined.csv", 
-                     sqlfile="basql.sqlout",
-                     metal="Ba")
+    cmd = CommandLine()
+    LOOKUPDIR = cmd.options.lookup
+    if cmd.options.dataset:
+        if cmd.options.exclude:
+            exclude = cmd.options.exclude.split(",")
+        if cmd.options.inclusive:
+            inclusive = cmd.options.inclusive.split(",")
+        if not cmd.options.exclude and not cmd.options.inclusive:
+            raise Error ("No exclusions or inclusions?")
+        if cmd.options.csvfilename:
+            test = os.path.isfile(cmd.options.csvfilename)
+            if not test:
+                print ("ERROR: could not find the .csv file")
+                sys.exit()
+        else:
+            print("ERROR: .csv filename not set in the command line")
+            sys.exit()
+        if cmd.options.sqlname:
+            test = os.path.isfile(cmd.options.sqlname)
+            if not test:
+                print("ERROR: could not find the sql file")
+                sys.exit()
+        else:
+            print("ERROR: sql file not set in the command line")
 
-    #write_report(directory='wilmer_qeq_gulp_optimized',
-    #             sqlfile='allsql.sqlout',
-    #             csvfile='top_ranked.csv')
+        create_a_dataset(csvfile=cmd.options.csvfilename,
+                         sqlfile=cmd.options.sqlname,
+                         metal=cmd.options.metal,
+                         exclude=cmd.options.exclude,
+                         inclusive=cmd.options.inclusive)
+                         
+    if cmd.options.report:
+        if cmd.options.dirname:
+            test = os.path.isdir(cmd.options.dirname)
+            if not test:
+                print ("ERROR: could not find the directory containing MOFs")
+        else:
+            print("ERROR: directory not set in the command line")
+            sys.exit()
+        if cmd.options.csvfilename:
+            test = os.path.isfile(cmd.options.csvfilename)
+            if not test:
+                print ("ERROR: could not find the .csv file")
+                sys.exit()
+        else:
+            print("ERROR: .csv filename not set in the command line")
+            sys.exit()
+        if cmd.options.sqlname:
+            test = os.path.isfile(cmd.options.sqlname)
+            if not test:
+                print("ERROR: could not find the sql file")
+                sys.exit()
+        else:
+            print("ERROR: sql file not set in the command line")
+
+        write_report(directory=cmd.options.dirname,
+                     sqlfile=cmd.options.sqlname,
+                     csvfile=cmd.options.csvfilename)
 
 if __name__ == "__main__":
     main()
