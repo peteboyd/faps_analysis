@@ -12,8 +12,20 @@ import random
 from math import cos, sin, sqrt, pi, exp
 import numpy as np
 from optparse import OptionParser
+import subprocess
 
 DEG2RAD = pi / 180.0
+ATOM_NUM = [
+    "ZERO", "H", "He", "Li", "Be", "B", "C", "N", "O", "F", "Ne", "Na", "Mg",
+    "Al", "Si", "P", "S", "Cl", "Ar", "K", "Ca", "Sc", "Ti", "V", "Cr", "Mn",
+    "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr", "Rb",
+    "Sr", "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd", "In",
+    "Sn", "Sb", "Te", "I", "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd", "Pm",
+    "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf", "Ta",
+    "W", "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po", "At",
+    "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk",
+    "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt",
+    "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
 global LOOKUPDIR
 
 class CSV(dict):
@@ -554,6 +566,83 @@ class CommandLine(object):
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
 
+class GrabGridPoints(int):
+    """Extracts an integer of grid points from an egulp calculation."""
+    code_loc = "/home/pboyd/bin"
+    # directory to submit jobs and remove later.
+    dir = "/home/pboyd/.temp"
+    geo_file = 'temp.geo'
+    config_file = 'tempconfig.ini'
+    param_file = 'tempparam.dat'
+    config_lines = ("build_grid  1\n" +
+                   "build_grid_from_scratch 1 none 0.25 0.25 0.25 2.0\n" +
+                   "save_grid 0 temp\n" +
+                   "calculate_pot_diff 0\n" +
+                   "skip_everything 1\n" +
+                   "point_charges_present 0\n" +
+                   "include_pceq 0\n" +
+                   "imethod 0\n")
+    param_lines = ("1\n    1   4.52800000   6.94520000")
+ 
+    def __new__(cls, cell, atoms, coordinates, value=0):
+        i = int.__new__(cls, value)
+        i.cell = cell
+        i.atoms = atoms
+        i.nums = [ATOM_NUM.index(j) for j in atoms]
+        i.coordinates = coordinates
+        i._write_geo_file()
+        i = i._submit_egulp_job()
+        return i
+
+    def _write_geo_file(self):
+        """Sets up the .geo file to run e-gulp."""
+        filestream = open(self.dir + "/" + self.geo_file, "w")
+        filestream.writelines("temp\n")
+        a, b, c = self.cell[:]
+        filestream.writelines(('%15.12f %15.12f %15.12f \n'%(tuple(a))))
+        filestream.writelines(('%15.12f %15.12f %15.12f \n'%(tuple(b))))
+        filestream.writelines(('%15.12f %15.12f %15.12f \n'%(tuple(c))))
+        filestream.writelines("%i\n"%(len(self.atoms)))
+        for atom, (x, y, z) in zip(self.nums, self.coordinates):
+            filestream.writelines("%6d %12.7f %12.7f  %12.7f %12.7f\n"%
+                                    (atom, x, y, z, 0.))
+        filestream.close()
+
+    def _submit_egulp_job(self):
+        """Submits the EGULP calculation to determine the number of grid
+        points to calculate.
+
+        """
+        os.chdir(self.dir)
+        if not os.path.isfile(self.config_file):
+            configstream = open(self.config_file, 'w')
+            configstream.writelines(self.config_lines)
+            configstream.close()
+        if not os.path.isfile(self.param_file):
+            parameterstream = open(self.param_file, 'w')
+            parameterstream.writelines(self.param_lines)
+            parameterstream.close()
+        code_exe = self.code_loc + "/egulppot"
+        job = subprocess.Popen([code_exe, self.geo_file, 
+                                self.param_file, self.config_file],
+                                shell=False,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE)
+        comm = job.communicate()
+        if comm[1] is not '':
+            print "ERROR in EGULP calculation!"
+            return -1
+        else:
+            return self._grab_ngrid_points(comm[0].split('\n')) 
+
+    def _grab_ngrid_points(self, lines):
+        """Grab the number of grid points from the output file."""
+        search_string = "total number of simulation points"
+        for line in reversed(lines):
+            if search_string in line:
+                parse = line.lstrip(search_string)
+                return int(parse.strip())
+ 
 class CifFile(object):
     """This class will grab data from the cif file such as the
     cartesian atom coordinates and the cell vectors.
@@ -691,8 +780,14 @@ def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
     sel = Selector(mof, metal=metal)
     sel.trim_organics()
     sel.trim_non_existing()
-    sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
-                                        "NO2", "HCO", "NH2"])
+    if exclude and inclusive:
+        sel.random_select(inclusive=inclusive, exclude=exclude)
+    elif exclude and inclusive is None:
+        sel.random_select(exclude=exclude)
+    elif inclusive and exclude is None:
+        sel.random_select(inclusive=inclusive)
+    #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
+    #                                    "NO2", "HCO", "NH2"])
     #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
 
 def write_report(directory=None, sqlfile=None, csvfile=None):
@@ -714,6 +809,7 @@ def main():
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
     if cmd.options.dataset:
+        inclusive, exclude = None, None
         if cmd.options.exclude:
             exclude = cmd.options.exclude.split(",")
         if cmd.options.inclusive:
@@ -739,8 +835,8 @@ def main():
         create_a_dataset(csvfile=cmd.options.csvfilename,
                          sqlfile=cmd.options.sqlname,
                          metal=cmd.options.metal,
-                         exclude=cmd.options.exclude,
-                         inclusive=cmd.options.inclusive)
+                         inclusive=inclusive,
+                         exclude=exclude)
                          
     if cmd.options.report:
         if cmd.options.dirname:
