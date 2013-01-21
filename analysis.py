@@ -110,8 +110,9 @@ class FunctionalGroups(dict):
             # check if the entry already exists!
             if self._check_duplicate(mof):
                 if self[mof] == dic:
+                    pass
                     # duplicate
-                    print "Duplicate found %s"%(mof)
+                    #print "Duplicate found %s"%(mof)
                 else:
                     print "Warning: duplicate found for %s"%(mof) + \
                             " but with different functionalization!"
@@ -264,9 +265,9 @@ class Selector(object):
                     str(fnl()) + ".out.cif"
             if not os.path.isfile(dir + "/" + newmofname):
                 self.mof_dic.pop(mof)
-                print "%s  does not exist!"%(mof)
+                #print "%s  does not exist!"%(mof)
 
-    def random_select(self, exclude=[], inclusive=[], partial=[]):
+    def random_select(self, exclude=[], inclusive=[], partial=[], gridmax=None):
         """Select a list of MOFs randomly based on low uptake.
         'exclude' defines functional groups which will not be represented
 
@@ -321,9 +322,27 @@ class Selector(object):
                         done = True
 
                     if not skip:
-                        group_count += 1
-                        chosen.append(mof)
-                        dataset.setdefault(tuple((group,)), []).append(mof)
+                        # special case for gridpoints, since their
+                        # determination is so expensive
+                        if gridmax:
+                            # have to source the correct file.
+                            dirmof = (LOOKUPDIR + '/' + 
+                                      mof[:-4] + '.out.cif')
+                            from_cif = CifFile(dirmof)
+                            ngrid = GrabGridPoints(from_cif.cell,
+                                    from_cif.atom_symbols,
+                                    from_cif.cart_coordinates)
+                            if ngrid > 0 and ngrid <= gridmax:
+                                group_count += 1
+                                chosen.append(mof)
+                                dataset.setdefault(tuple((group,)), []).\
+                                        append(mof)
+                                self.mof_dic[mof]['ngrid'] = ngrid
+
+                        else:
+                            group_count += 1
+                            chosen.append(mof)
+                            dataset.setdefault(tuple((group,)), []).append(mof)
 
         elif exclude and not inclusive:
             fnl_dic = {}
@@ -363,18 +382,37 @@ class Selector(object):
                         skip = True
 
                 if not skip:
-                    for i in groups:
-                        fnl_dic[i] += 1
-                    chosen.append(mof)
-                    mofcount += 1
-                    dataset.setdefault(tuple(groups), []).append(mof)
+                    # special case for gridpoints, since their
+                    # determination is so expensive
+                    if gridmax:
+                        # have to source the correct file.
+                        dirmof = (LOOKUPDIR + '/' + 
+                                  mof[:-4] + '.out.cif')
+                        from_cif = CifFile(dirmof)
+                        ngrid = GrabGridPoints(from_cif.cell,
+                                from_cif.atom_symbols,
+                                from_cif.cart_coordinates)
+                        if ngrid > 0 and ngrid <= gridmax:
+                            for i in groups:
+                                fnl_dic[i] += 1
+                            chosen.append(mof)
+                            mofcount += 1
+                            dataset.setdefault(tuple(groups), []).append(mof)
+                            self.mof_dic[mof]['ngrid'] = ngrid
+                    else:
+                        for i in groups:
+                            fnl_dic[i] += 1
+                        chosen.append(mof)
+                        mofcount += 1
+                        dataset.setdefault(tuple(groups), []).append(mof)
+
                 if mofcount >= inclusive_max:
                     done = True
 
-        self.write_dataset(dataset)
+        self.write_dataset(dataset, gridmax)
         # TODO(pboyd): add partial considerations.
 
-    def write_dataset(self, dataset):
+    def write_dataset(self, dataset, gridmax):
         """Writes the data to a file."""
 
         filename = ""
@@ -388,7 +426,11 @@ class Selector(object):
             count += 1
             filename += "%02d"%(count)
         outstream = open(filename+".csv", "w")
-        header="MOFname,mmol/g,functional_group1,functional_group2\n"
+        header="MOFname,mmol/g,functional_group1,functional_group2"
+        if gridmax:
+            header += ",ngrid\n"
+        else:
+            header += "\n"
         outstream.writelines(header)
         for fnl, mofs in dataset.iteritems():
             if len(fnl) == 1:
@@ -400,8 +442,16 @@ class Selector(object):
             for mof in mofs:
                 print "     " + mof
                 uptake = self.mof_dic[mof]['old_uptake']
-                outstream.writelines("%s,%f,%s,%s\n"%(mof, uptake, 
-                                                      groups[0], groups[1]))
+                line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
+                if gridmax:
+                    try:
+                        ngrid = self.mof_dic[mof]['ngrid']
+                    except KeyError:
+                        ngrid = 0
+                    line += ",%i\n"%(ngrid)
+                else:
+                    line += "\n"
+                outstream.writelines(line)
         outstream.close()
 
     def gen_moflist(self, group, exclude, incl=True):
@@ -562,6 +612,11 @@ class CommandLine(object):
                           dest="metal",
                           help="specify metals to generate dataset. Current" +
                           " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni") 
+
+        parser.add_option("-G", "--gridpoints", action="store", type="int",
+                          dest="maxgridpts",
+                          help="specify the max number of grid points to "+\
+                               "allow the structures to be chosen")
 
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
@@ -768,7 +823,7 @@ def pair_csv_fnl(mof, fnl):
     del fnl
 
 def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
-                     inclusive=None, exclude=None):
+                     inclusive=None, exclude=None, gridmax=None):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
@@ -781,11 +836,11 @@ def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
     sel.trim_organics()
     sel.trim_non_existing()
     if exclude and inclusive:
-        sel.random_select(inclusive=inclusive, exclude=exclude)
+        sel.random_select(inclusive=inclusive, exclude=exclude, gridmax=gridmax)
     elif exclude and inclusive is None:
-        sel.random_select(exclude=exclude)
+        sel.random_select(exclude=exclude, gridmax=gridmax)
     elif inclusive and exclude is None:
-        sel.random_select(inclusive=inclusive)
+        sel.random_select(inclusive=inclusive, gridmax=gridmax)
     #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
     #                                    "NO2", "HCO", "NH2"])
     #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
@@ -831,12 +886,16 @@ def main():
                 sys.exit()
         else:
             print("ERROR: sql file not set in the command line")
+        if cmd.options.maxgridpts:
+            print("Excluding MOFs with gridpoints exceeding %i"%
+                    (cmd.options.maxgridpts))
 
         create_a_dataset(csvfile=cmd.options.csvfilename,
                          sqlfile=cmd.options.sqlname,
                          metal=cmd.options.metal,
                          inclusive=inclusive,
-                         exclude=exclude)
+                         exclude=exclude
+                         gridmax=cmd.options.maxgridpts)
                          
     if cmd.options.report:
         if cmd.options.dirname:
