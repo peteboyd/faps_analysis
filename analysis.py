@@ -26,7 +26,7 @@ ATOM_NUM = [
     "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk",
     "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt",
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
-global LOOKUPDIR
+LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 
 class CSV(dict):
     """
@@ -280,7 +280,7 @@ class Selector(object):
         """
         chosen = []
         dataset = {}
-        inclusive_max = 100
+        inclusive_max = 120
         partial_max = 100
         group_max = 20
         if inclusive and partial:
@@ -324,10 +324,12 @@ class Selector(object):
                     if not skip:
                         # special case for gridpoints, since their
                         # determination is so expensive
-                        if gridmax:
+                        if gridmax is not None:
                             # have to source the correct file.
+                            if mof.endswith(".cif"):
+                                mof = mof[:-4]
                             dirmof = (LOOKUPDIR + '/' + 
-                                      mof[:-4] + '.out.cif')
+                                      mof + '.out.cif')
                             from_cif = CifFile(dirmof)
                             ngrid = GrabGridPoints(from_cif.cell,
                                     from_cif.atom_symbols,
@@ -384,10 +386,12 @@ class Selector(object):
                 if not skip:
                     # special case for gridpoints, since their
                     # determination is so expensive
-                    if gridmax:
+                    if gridmax is not None:
                         # have to source the correct file.
+                        if mof.endswith('.cif'):
+                            mof = mof[:-4]
                         dirmof = (LOOKUPDIR + '/' + 
-                                  mof[:-4] + '.out.cif')
+                                  mof + '.out.cif')
                         from_cif = CifFile(dirmof)
                         ngrid = GrabGridPoints(from_cif.cell,
                                 from_cif.atom_symbols,
@@ -415,19 +419,21 @@ class Selector(object):
     def write_dataset(self, dataset, gridmax):
         """Writes the data to a file."""
 
-        filename = ""
+        basename = ""
         if self.metalind:
             for key, value in self.metal_indices.items():
                 if value == self.metalind:
-                    filename += "%s_"%key
-        filename += "dataset"
+                    basename += "%s_"%key
+        basename += "dataset"
+        filename = basename
         count = 0
         while os.path.isfile(filename+".csv"):
             count += 1
-            filename += "%02d"%(count)
+            filename = basename + ".%02d"%(count)
+        print("Writing dataset to %s.csv..."%(filename))
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
-        if gridmax:
+        if gridmax is not None:
             header += ",ngrid\n"
         else:
             header += "\n"
@@ -443,7 +449,7 @@ class Selector(object):
                 print "     " + mof
                 uptake = self.mof_dic[mof]['old_uptake']
                 line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
-                if gridmax:
+                if gridmax is not None:
                     try:
                         ngrid = self.mof_dic[mof]['ngrid']
                     except KeyError:
@@ -453,6 +459,7 @@ class Selector(object):
                     line += "\n"
                 outstream.writelines(line)
         outstream.close()
+        print("Done.")
 
     def gen_moflist(self, group, exclude, incl=True):
         """Returns a list of MOFs based on a functional group."""
@@ -519,10 +526,11 @@ class GrabNewData(object):
             basename = filename
         count = 0
         # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename):
+        while os.path.isfile(filename + ".csv"):
             count += 1
-            filename = basename + "%02d.csv"%(count)
-        outstream = open(filename, "w")
+            filename = basename + "%02d"%(count)
+        print("Writing report to %s.csv..."%(filename))
+        outstream = open(filename + ".csv", "w")
         if self.extended:
             header = "MOFname,old_uptake,new_uptake,Functional_grp1," +\
                     "Functional_grp2,grp1_replacements,grp2_replacements\n"
@@ -561,6 +569,7 @@ class GrabNewData(object):
                 line = fmt%(mof, old_uptake, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
+        print("Done.")
         outstream.close()
 
 class CommandLine(object):
@@ -574,8 +583,9 @@ class CommandLine(object):
         usage = "%prog [options]\n" + \
                 "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
                 " -c Cu_dataset.csv\n" + \
-                "%prog -s -M Cu -n F,Cl,Br,I,SO3H -s cusql.sqlout" +\
-                "-G 150000 -i used_mofs -c Cu_dataset.csv"
+                "%prog -s -M Cu -n F,Cl,Br,I,SO3H,NHMe -s cusql.sqlout" +\
+                "-G 150000 -i used_mofs -c Cu_dataset.csv\n" + \
+                "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
         parser = OptionParser(usage=usage)
         parser.add_option("-r", "--report", action="store_true",
                           dest="report",
@@ -617,7 +627,7 @@ class CommandLine(object):
                           dest="maxgridpts",
                           help="specify the max number of grid points to "+\
                                "allow the structures to be chosen")
-        parser.add_option("-e", "--extract", action="store_true", 
+        parser.add_option("-e", "--extract", action="store", type="string",
                           dest="extract",
                           help="write a report on a list of MOFs which" + \
                                "contains counting of functional groups etc.")
@@ -708,13 +718,12 @@ class CifFile(object):
     
     """
 
-    def __init__(self, moffilename, code_loc="/home/pboyd"):
+    def __init__(self, moffilename):
         """Read in the mof file and parse the data to write a .geo file
         for the egulp method.
 
         """
         self.mofdata = parse_cif(moffilename)
-        self.code_loc = code_loc
         self.cell = self._grab_cell_vectors()
         self.atom_symbols = self._grab_atom_names()
         self.cart_coordinates = self._grab_cartesians()
@@ -822,7 +831,7 @@ def pair_csv_fnl(mof, fnl):
 
         except KeyError:
             mof[name]["functional_groups"] = {None:["N/A"], None:["N/A"]}
-            print "Warning: could not find data for %s"%name
+            #print "Warning: could not find data for %s"%name
 
     del fnl
 
@@ -849,7 +858,7 @@ def create_a_dataset(csvfile=None, sqlfile=None, metal=None,
     elif inclusive and exclude is None:
         inclusive = inclusive
         exclude = []
-    sel.random_select(inclusive=inclusive, exclude=exclude)
+    sel.random_select(inclusive=inclusive, exclude=exclude, gridmax=gridmax)
     #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
     #                                    "NO2", "HCO", "NH2"])
     #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
@@ -875,23 +884,28 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
 
     """
     all_mofs = CSV(csvfile)
+    all_mofs.read_from_csv_multiple()
     all_fnls = FunctionalGroups(sqlfile)
     pair_csv_fnl(all_mofs, all_fnls)
     mofs = MOFlist(file)
     mof_dat = {}
+    fnl_count = {}
+    fnl_pair = {}
+    organic_count = {}
+    metal_count = {}
+    org_pair_count = {}
+    full_mof_count = {}
     for mof in mofs:
+        if mof.endswith('.out.cif'):
+            mof = mof[:-8]
+        elif mof.endswith('.cif'):
+            mof = mof[:-4]
         try:
             data = all_mofs[mof]
             mof_dat[mof] = data
         except KeyError:
             print("ERROR: could not find data for %s"%mof)
     def analyse_data():
-        fnl_count = {}
-        fnl_pair = {}
-        organic_count = {}
-        metal_count = {}
-        org_pair_count = {}
-        full_mof_count = {}
         for mof in mof_dat.keys():
             met, org1, org2, top, junk = parse_mof_data(mof)
             stuff = mof_dat[mof]
@@ -907,14 +921,14 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
                 fnl_count[fnl1] += 1
                 fnl_count.setdefault(fnl2, 0)
                 fnl_count[fnl2] += 1
-                pair = sorted([fnl2, fnl2])
+                pair = sorted([fnl1, fnl2])
                 fnl_pair.setdefault(tuple(pair), 0) 
                 fnl_pair[tuple(pair)] += 1
             metal_count.setdefault(met(), 0)
             metal_count[met()] += 1
             if org1() == org2():
                 organic_count.setdefault(org1(), 0) 
-                organci_count[org1()] += 1
+                organic_count[org1()] += 1
             else:
                 organic_count.setdefault(org1(), 0)
                 organic_count[org1()] += 1
@@ -939,24 +953,24 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
             count += 1
             filename = basename + ".overall_report.%02d.csv"%(count)
         outstream = open(filename, "w")
-        outstream.writelines("functional_group,count")
+        outstream.writelines("functional_group,count\n")
         for fnl, count in fnl_count.items():
             outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
-        outstream.writelines("functional_group1,functional_group2,count")
+        outstream.writelines("functional_group1,functional_group2,count\n")
         for pair, count in fnl_pair.items():
-            outstream.writelines("%s,%s,%i"%(pair[0], pair[1], count))
-        outstream.writelines("organic_index,count")
+            outstream.writelines("%s,%s,%i\n"%(pair[0], pair[1], count))
+        outstream.writelines("organic_index,count\n")
         for org, count in organic_count.items():
-            outstream.writelines("%i,%i"%(org, count))
-        outstream.writelines("organic_index1,organic_index2,count")
+            outstream.writelines("%i,%i\n"%(org, count))
+        outstream.writelines("organic_index1,organic_index2,count\n")
         for orgs, count in org_pair_count.items():
-            outstream.writelines("%i,%i,%i"%(orgs[0], orgs[1], count))
-        outstream.writelines("metal_index,count")
+            outstream.writelines("%i,%i,%i\n"%(orgs[0], orgs[1], count))
+        outstream.writelines("metal_index,count\n")
         for met, count in metal_count.items():
-            outstream.writelines("%i,%i"%(met, count))
-        outstream.writelines("MOFname,count")
+            outstream.writelines("%i,%i\n"%(met, count))
+        outstream.writelines("MOFname,count\n")
         for mof, count in full_mof_count.items():
-            outstream.writelines("%s,%i"%(mof, count))
+            outstream.writelines("%s,%i\n"%(mof, count))
         outstream.close()
 
     def write_specific_csv():
@@ -992,7 +1006,10 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
                fnl1_occur = fnl_count[fnl1]
                fnl2_occur = fnl_count[fnl2]
                pair = sorted([fnl1, fnl2])
-               fnl_pair_occur = fnl_pair[tuple(pair)]
+               try:
+                   fnl_pair_occur = fnl_pair[tuple(pair)]
+               except KeyError:
+                   fnl_pair_occur = 0
             met_occur = metal_count[met()]
             orgs = sorted([org1(), org2()])
             if len(set(orgs)) == 1:
@@ -1015,6 +1032,7 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
     return analyse_data, write_overall_csv, write_specific_csv
 
 def main():
+    global LOOKUPDIR
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
     if cmd.options.dataset:
@@ -1075,6 +1093,7 @@ def main():
                 sys.exit()
         else:
             print("ERROR: sql file not set in the command line")
+            sys.exit()
 
         write_report(directory=cmd.options.dirname,
                      sqlfile=cmd.options.sqlname,
