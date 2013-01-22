@@ -246,13 +246,10 @@ class Selector(object):
             o2 = org2()
             orgpair = tuple(sorted([o1, o2]))
             if (o1 in self.bad_organics):
-                print o1
                 self.mof_dic.pop(mof)
             elif (o2 in self.bad_organics):
-                print o2
                 self.mof_dic.pop(mof)
             elif (orgpair in self.bad_organics):
-                print orgpair
                 self.mof_dic.pop(mof)
 
     def trim_non_existing(self):
@@ -915,6 +912,7 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
             mof_dat[mof] = data
         except KeyError:
             print("ERROR: could not find data for %s"%mof)
+
     def analyse_data():
         for mof in mof_dat.keys():
             met, org1, org2, top, junk = parse_mof_data(mof)
@@ -1063,7 +1061,7 @@ def main():
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)
             if not test:
-                print ("ERROR: could not find the .csv file")
+                print("ERROR: could not find the .csv file")
                 sys.exit()
         else:
             print("ERROR: .csv filename not set in the command line")
@@ -1091,14 +1089,14 @@ def main():
         if cmd.options.dirname:
             test = os.path.isdir(cmd.options.dirname)
             if not test:
-                print ("ERROR: could not find the directory containing MOFs")
+                print("ERROR: could not find the directory containing MOFs")
         else:
             print("ERROR: directory not set in the command line")
             sys.exit()
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)
             if not test:
-                print ("ERROR: could not find the .csv file")
+                print("ERROR: could not find the .csv file")
                 sys.exit()
         else:
             print("ERROR: .csv filename not set in the command line")
@@ -1120,7 +1118,7 @@ def main():
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)
             if not test:
-                print ("ERROR: could not find the .csv file")
+                print("ERROR: could not find the .csv file")
                 sys.exit()
         else:
             print("ERROR: .csv filename not set in the command line")
