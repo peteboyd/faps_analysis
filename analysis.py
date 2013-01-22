@@ -979,22 +979,22 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
             filename = basename + ".overall_report.%02d"%(count)
         print("Writing overall report to %s.csv..."%filename)
         outstream = open(filename + ".csv", "w")
-        outstream.writelines("functional_group,count\n")
+        outstream.writelines("#functional_group,count\n")
         for fnl, count in fnl_count.items():
             outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
-        outstream.writelines("functional_group1,functional_group2,count\n")
+        outstream.writelines("#functional_group1,functional_group2,count\n")
         for pair, count in fnl_pair.items():
             outstream.writelines("%s,%s,%i\n"%(pair[0], pair[1], count))
-        outstream.writelines("organic_index,count\n")
+        outstream.writelines("#organic_index,count\n")
         for org, count in organic_count.items():
             outstream.writelines("%i,%i\n"%(org, count))
-        outstream.writelines("organic_index1,organic_index2,count\n")
+        outstream.writelines("#organic_index1,organic_index2,count\n")
         for orgs, count in org_pair_count.items():
             outstream.writelines("%i,%i,%i\n"%(orgs[0], orgs[1], count))
-        outstream.writelines("metal_index,count\n")
+        outstream.writelines("#metal_index,count\n")
         for met, count in metal_count.items():
             outstream.writelines("%i,%i\n"%(met, count))
-        outstream.writelines("MOFname,count\n")
+        outstream.writelines("#MOFname,count\n")
         for mof, count in full_mof_count.items():
             outstream.writelines("%s,%i\n"%(mof, count))
         outstream.close()
