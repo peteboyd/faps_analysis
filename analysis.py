@@ -308,8 +308,17 @@ class Selector(object):
                 done = False
                 group_count = 0
                 while not done:
-                    mof = random.choice(moflist)
+                    try:
+                        mof = random.choice(moflist)
+                        ind = moflist.index(mof)
+                        moflist.pop(ind)
                     skip = False
+                    except IndexError:
+                        print("Finished without filling list entirely!")
+                        mof = None
+                        done = True
+                        skip = True
+
                     if mof in chosen:
                         skip = True
                     try:
@@ -363,9 +372,16 @@ class Selector(object):
             moflist = self.mof_dic.keys() 
             done = False
             while not done:
-                mof = random.choice(moflist)
-                skip = False
-
+                try:
+                    mof = random.choice(moflist)
+                    ind = moflist.index(mof)
+                    moflist.pop(ind)
+                    skip = False
+                except IndexError:
+                    print("Finished without filling list entirely!")
+                    mof = None
+                    skip = True
+                    done = True
                 try:
                     groups = self.mof_dic[mof]['functional_groups'].keys()
                 except KeyError:
