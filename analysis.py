@@ -13,6 +13,7 @@ from math import cos, sin, sqrt, pi, exp
 import numpy as np
 from optparse import OptionParser
 import subprocess
+import zipfile
 
 DEG2RAD = pi / 180.0
 ATOM_NUM = [
@@ -312,7 +313,7 @@ class Selector(object):
                         mof = random.choice(moflist)
                         ind = moflist.index(mof)
                         moflist.pop(ind)
-                    skip = False
+                        skip = False
                     except IndexError:
                         print("Finished without filling list entirely!")
                         mof = None
@@ -607,7 +608,7 @@ class CommandLine(object):
                 "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
                 " -c Cu_dataset.csv\n" + \
                 "%prog -s -M Cu -n F,Cl,Br,I,SO3H,NHMe -s cusql.sqlout" +\
-                "-G 150000 -i used_mofs -c Cu_dataset.csv\n" + \
+                " -G 150000 -i used_mofs -c Cu_dataset.csv\n" + \
                 "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
         parser = OptionParser(usage=usage)
         parser.add_option("-r", "--report", action="store_true",
@@ -972,33 +973,86 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
         else:
             basename = file
         count = 0
-        filename = basename + ".overall_report"
-        # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename + ".csv"):
-            count += 1
-            filename = basename + ".overall_report.%02d"%(count)
-        print("Writing overall report to %s.csv..."%filename)
-        outstream = open(filename + ".csv", "w")
+        files = []
+        print("Writing overall reports...")
+        # first file prints out individual functional group stats
+        fnlfile = basename + ".fnl_grps"
+        # create original filename
+        fnlfile = create_csv_filename(fnlfile)
+        print("Writing %s.csv"%fnlfile)
+        # store filename for archiving later
+        files.append("%s.csv"%fnlfile)
+        outstream = open(fnlfile + ".csv", "w")
+        # write data to file
         outstream.writelines("#functional_group,count\n")
         for fnl, count in fnl_count.items():
             outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
+        outstream.close()
+        # second file prints out pair functional group stats
+        fnlpfile = basename + ".fnl_pairs"
+        fnlpfile = create_csv_filename(fnlpfile)
+        print("Writing %s.csv"%fnlpfile)
+        files.append("%s.csv"%fnlpfile)
+        outstream = open(fnlpfile + ".csv", "w")
         outstream.writelines("#functional_group1,functional_group2,count\n")
         for pair, count in fnl_pair.items():
             outstream.writelines("%s,%s,%i\n"%(pair[0], pair[1], count))
+        outstream.close()
+        # third file prints out individual organic group stats
+        orgfile = basename + ".org"
+        orgfile = create_csv_filename(orgfile)
+        print("Writing %s.csv"%orgfile)
+        files.append("%s.csv"%orgfile)
+        outstream = open(orgfile + ".csv", "w")
         outstream.writelines("#organic_index,count\n")
         for org, count in organic_count.items():
             outstream.writelines("%i,%i\n"%(org, count))
+        outstream.close()
+        # fourth file prints out organic pair stats
+        orgpfile = basename + ".org_pairs"
+        orgpfile = create_csv_filename(orgpfile)
+        print("Writing %s.csv"%orgpfile)
+        files.append("%s.csv"%orgpfile)
+        outstream = open(orgpfile + ".csv", "w")
         outstream.writelines("#organic_index1,organic_index2,count\n")
         for orgs, count in org_pair_count.items():
             outstream.writelines("%i,%i,%i\n"%(orgs[0], orgs[1], count))
+        outstream.close()
+        # fifth file prints out metal index stats
+        metfile = basename + ".metal"
+        metfile = create_csv_filename(metfile)
+        print("Writing %s.csv"%metfile)
+        files.append("%s.csv"%metfile)
+        outstream = open(metfile + ".csv", "w")
         outstream.writelines("#metal_index,count\n")
         for met, count in metal_count.items():
             outstream.writelines("%i,%i\n"%(met, count))
+        outstream.close()
+        # sixth file prints out whole mof stats
+        moffile = basename + ".mofname"
+        moffile = create_csv_filename(moffile)
+        print("Writing %s.csv"%moffile)
+        files.append("%s.csv"%moffile)
+        outstream = open(moffile + ".csv", "w")
         outstream.writelines("#MOFname,count\n")
         for mof, count in full_mof_count.items():
             outstream.writelines("%s,%i\n"%(mof, count))
         outstream.close()
         print("Done.")
+
+        # Archive data
+        zipname = basename + ".overall_reports"
+        zipname = create_csv_filename(zipname, extension=".zip")
+        print("Archiving to %s.zip ..."%zipname)
+        zip = zipfile.ZipFile(zipname + ".zip", "w")
+        for file in files:
+            zip.write("%s"%file)
+        zip.close()
+        print("Done.")
+        # Clear filenames
+        for file in files:
+            os.remove(file)
+
 
     def write_specific_csv():
         os.chdir(WORKDIR)
@@ -1008,10 +1062,7 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
             basename = file
         count = 0
         filename = basename + ".specific_report"
-        # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename + ".csv"):
-            count += 1
-            filename = basename + ".specific_report.%02d"%(count)
+        filename = create_csv_filename(filename)
         outstream = open(filename + ".csv", "w")
         print ("Writing specific report to %s.csv"%filename)
         header = "MOFname,functional_group1,functional_group2," +\
@@ -1059,6 +1110,15 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
         outstream.close()
         print("Done.")
     return analyse_data, write_overall_csv, write_specific_csv
+
+def create_csv_filename(basename, extension=".csv"):
+    count = 0
+    filename = basename
+    # make sure there's no overwriting, goes up to 99
+    while os.path.isfile(filename + extension):
+        count += 1
+        filename = basename + ".%02d"%(count)
+    return filename
 
 def main():
     global LOOKUPDIR
