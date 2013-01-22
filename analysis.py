@@ -27,6 +27,7 @@ ATOM_NUM = [
     "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt",
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
+WORKDIR = ""
 
 class CSV(dict):
     """
@@ -244,8 +245,14 @@ class Selector(object):
             o1 = org1()
             o2 = org2()
             orgpair = tuple(sorted([o1, o2]))
-            if (o1 in self.bad_organics) or (o2 in self.bad_organics) or\
-                    (orgpair in self.bad_organics):
+            if (o1 in self.bad_organics):
+                print o1
+                self.mof_dic.pop(mof)
+            elif (o2 in self.bad_organics):
+                print o2
+                self.mof_dic.pop(mof)
+            elif (orgpair in self.bad_organics):
+                print orgpair
                 self.mof_dic.pop(mof)
 
     def trim_non_existing(self):
@@ -418,7 +425,7 @@ class Selector(object):
 
     def write_dataset(self, dataset, gridmax):
         """Writes the data to a file."""
-
+        os.chdir(WORKDIR)
         basename = ""
         if self.metalind:
             for key, value in self.metal_indices.items():
@@ -431,6 +438,7 @@ class Selector(object):
             count += 1
             filename = basename + ".%02d"%(count)
         print("Writing dataset to %s.csv..."%(filename))
+        print("Gridmax is set to ", gridmax)
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
         if gridmax is not None:
@@ -447,7 +455,10 @@ class Selector(object):
                 groups = fnl
             for mof in mofs:
                 print "     " + mof
-                uptake = self.mof_dic[mof]['old_uptake']
+                try:
+                    uptake = self.mof_dic[mof]['old_uptake']
+                except KeyError:
+                    uptake = 0.
                 line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
                 if gridmax is not None:
                     try:
@@ -486,7 +497,6 @@ class Selector(object):
 class GrabNewData(object):
     """Takes a mof dictionary and adds new uptake data to it."""
     def __init__(self, mofs, basedir, extended=False):
-        self.pwd = os.getcwd()
         self.mofs = mofs
         # determines if hydrogen replacements are shown in the output
         self.extended = extended
@@ -515,11 +525,11 @@ class GrabNewData(object):
                 new_uptake = 0. 
 
             self.mofs[mof]['new_uptake'] = new_uptake
-        os.chdir(self.pwd)
+        os.chdir(WORKDIR)
 
     def write_data(self, filename="default.report.csv"):
         """Write all MOF data to a csv file."""
-        os.chdir(self.pwd)
+        os.chdir(WORKDIR)
         if filename.endswith(".csv"):
             basename = filename[:-4]
         else:
@@ -942,17 +952,19 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
             full_mof_count[fullmof] += 1
 
     def write_overall_csv():
+        os.chdir(WORKDIR)
         if file.endswith(".csv"):
             basename = file[:-4]
         else:
             basename = file
         count = 0
-        filename = basename + ".overall_report.csv"
+        filename = basename + ".overall_report"
         # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename):
+        while os.path.isfile(filename + ".csv"):
             count += 1
-            filename = basename + ".overall_report.%02d.csv"%(count)
-        outstream = open(filename, "w")
+            filename = basename + ".overall_report.%02d"%(count)
+        print("Writing overall report to %s.csv..."%filename)
+        outstream = open(filename + ".csv", "w")
         outstream.writelines("functional_group,count\n")
         for fnl, count in fnl_count.items():
             outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
@@ -972,19 +984,22 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
         for mof, count in full_mof_count.items():
             outstream.writelines("%s,%i\n"%(mof, count))
         outstream.close()
+        print("Done.")
 
     def write_specific_csv():
+        os.chdir(WORKDIR)
         if file.endswith(".csv"):
             basename = file[:-4]
         else:
             basename = file
         count = 0
-        filename = basename + ".specific_report.csv"
+        filename = basename + ".specific_report"
         # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename):
+        while os.path.isfile(filename + ".csv"):
             count += 1
-            filename = basename + ".specific_report.%02d.csv"%(count)
-        outstream = open(filename, "w")
+            filename = basename + ".specific_report.%02d"%(count)
+        outstream = open(filename + ".csv", "w")
+        print ("Writing specific report to %s.csv"%filename)
         header = "MOFname,functional_group1,functional_group2," +\
                 "mof_occur,metal_occur,org1_occur,org2_occur," +\
                 "org_pair_occur,fnl1_occur,fnl2_occur," +\
@@ -1028,13 +1043,15 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
                         org2_occur,org_pair_occur,fnl1_occur,fnl2_occur,
                         fnl_pair_occur))
         outstream.close()
-
+        print("Done.")
     return analyse_data, write_overall_csv, write_specific_csv
 
 def main():
     global LOOKUPDIR
+    global WORKDIR
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
+    WORKDIR = os.getcwd()
     if cmd.options.dataset:
         inclusive, exclude = None, None
         if cmd.options.exclude:
