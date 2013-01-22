@@ -902,7 +902,7 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     dir = os.getcwd() 
     data.write_data(filename=dir + "/" + basename + ".report.csv")
 
-def extract_info(file=None, sqlfile=None, csvfile=None):
+def extract_info(file_name=None, sqlfile=None, csvfile=None):
     """Extract as much information from a list of mofnames, and provide
     an ammended report with the findings.
 
@@ -911,7 +911,7 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
     all_mofs.read_from_csv_multiple()
     all_fnls = FunctionalGroups(sqlfile)
     pair_csv_fnl(all_mofs, all_fnls)
-    mofs = MOFlist(file)
+    mofs = MOFlist(file_name)
     mof_dat = {}
     fnl_count = {}
     fnl_pair = {}
@@ -968,10 +968,10 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
 
     def write_overall_csv():
         os.chdir(WORKDIR)
-        if file.endswith(".csv"):
-            basename = file[:-4]
+        if file_name.endswith(".csv"):
+            basename = file_name[:-4]
         else:
-            basename = file
+            basename = file_name
         count = 0
         files = []
         print("Writing overall reports...")
@@ -1045,21 +1045,21 @@ def extract_info(file=None, sqlfile=None, csvfile=None):
         zipname = create_csv_filename(zipname, extension=".zip")
         print("Archiving to %s.zip ..."%zipname)
         zip = zipfile.ZipFile(zipname + ".zip", "w")
-        for file in files:
-            zip.write("%s"%file)
+        for f in files:
+            zip.write("%s"%f)
         zip.close()
         print("Done.")
         # Clear filenames
-        for file in files:
-            os.remove(file)
+        for f in files:
+            os.remove(f)
 
 
     def write_specific_csv():
         os.chdir(WORKDIR)
-        if file.endswith(".csv"):
-            basename = file[:-4]
+        if file_name.endswith(".csv"):
+            basename = file_name[:-4]
         else:
-            basename = file
+            basename = file_name
         count = 0
         filename = basename + ".specific_report"
         filename = create_csv_filename(filename)
@@ -1210,7 +1210,8 @@ def main():
             print("ERROR: could not find the mof file")
             sys.exit()
 
-        an, over, spec = extract_info(cmd.options.extract,
+        an, over, spec = extract_info(
+                     file_name=cmd.options.extract,
                      sqlfile=cmd.options.sqlname,
                      csvfile=cmd.options.csvfilename)
         an()
