@@ -452,11 +452,8 @@ class Selector(object):
                 if value == self.metalind:
                     basename += "%s_"%key
         basename += "dataset"
-        filename = basename
         count = 0
-        while os.path.isfile(filename+".csv"):
-            count += 1
-            filename = basename + ".%02d"%(count)
+        filename = create_csv_filename(basename) 
         print("Writing dataset to %s.csv..."%(filename))
         print("Gridmax is set to ", gridmax)
         outstream = open(filename+".csv", "w")
@@ -556,9 +553,7 @@ class GrabNewData(object):
             basename = filename
         count = 0
         # make sure there's no overwriting, goes up to 99
-        while os.path.isfile(filename + ".csv"):
-            count += 1
-            filename = basename + "%02d"%(count)
+        filename = create_csv_filename(basename)
         print("Writing report to %s.csv..."%(filename))
         outstream = open(filename + ".csv", "w")
         if self.extended:
@@ -906,8 +901,10 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     pair_csv_fnl(mofs, fnl)
     data = GrabNewData(mofs, basedir=directory, extended=False)
     data.grab_data()
-    basename = ".".join(directory.split("/"))
-    dir = os.getcwd() 
+    base_list = directory.split("/")
+    # take the last two entries in the directory as the file name
+    basename = ".".join(base_list[-2:])
+    dir = WORKDIR 
     data.write_data(filename=dir + "/" + basename + ".report.csv")
 
 def extract_info(file_name=None, sqlfile=None, csvfile=None):
