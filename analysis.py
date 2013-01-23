@@ -613,8 +613,9 @@ class CommandLine(object):
         usage = "%prog [options]\n" + \
                 "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
                 " -c Cu_dataset.csv\n" + \
-                "%prog -s -M Cu -n F,Cl,Br,I,SO3H,NHMe -s cusql.sqlout" +\
-                " -G 150000 -i used_mofs -c Cu_dataset.csv\n" + \
+                "%prog -s -M Cu -n F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
+                " -G 150000 -i used_mofs -c combined.csv " + \
+                "-L /scratch/tdaff/FinalCif\n" + \
                 "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
         parser = OptionParser(usage=usage)
         parser.add_option("-r", "--report", action="store_true",
@@ -628,7 +629,7 @@ class CommandLine(object):
                           help="location of csv file with existing data in it.")
         parser.add_option("-d", "--directory", action="store",
                           dest="dirname",
-                          help="location of directory containing .cif files.")
+                          help="location of directory containing new data.")
         parser.add_option("-q", "--sqlfile", action="store", type="string",
                           dest="sqlname",
                           help="location of sql file containing mof "+
