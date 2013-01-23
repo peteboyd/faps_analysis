@@ -339,21 +339,17 @@ class Selector(object):
                         # special case for gridpoints, since their
                         # determination is so expensive
                         if gridmax is not None:
+                            ngrid = self.gridmaxtest(mof)
                             # have to source the correct file.
-                            if mof.endswith(".cif"):
-                                mof = mof[:-4]
-                            dirmof = (LOOKUPDIR + '/' + 
-                                      mof + '.out.cif')
-                            from_cif = CifFile(dirmof)
-                            ngrid = GrabGridPoints(from_cif.cell,
-                                    from_cif.atom_symbols,
-                                    from_cif.cart_coordinates)
-                            if ngrid > 0 and ngrid <= gridmax:
+                            if (ngrid > 0) and (ngrid <= gridmax):
                                 group_count += 1
                                 chosen.append(mof)
                                 dataset.setdefault(tuple((group,)), []).\
                                         append(mof)
                                 self.mof_dic[mof]['ngrid'] = ngrid
+                            else:
+                                print("%s.out.cif contains %i grid points."%
+                                    (mof, ngrid))
 
                         else:
                             group_count += 1
@@ -408,22 +404,17 @@ class Selector(object):
                     # special case for gridpoints, since their
                     # determination is so expensive
                     if gridmax is not None:
-                        # have to source the correct file.
-                        if mof.endswith('.cif'):
-                            mof = mof[:-4]
-                        dirmof = (LOOKUPDIR + '/' + 
-                                  mof + '.out.cif')
-                        from_cif = CifFile(dirmof)
-                        ngrid = GrabGridPoints(from_cif.cell,
-                                from_cif.atom_symbols,
-                                from_cif.cart_coordinates)
-                        if ngrid > 0 and ngrid <= gridmax:
+                        ngrid = self.gridmaxtest(mof)
+                        if (ngrid > 0) and (ngrid <= gridmax):
                             for i in groups:
                                 fnl_dic[i] += 1
                             chosen.append(mof)
                             mofcount += 1
                             dataset.setdefault(tuple(groups), []).append(mof)
                             self.mof_dic[mof]['ngrid'] = ngrid
+                        else:
+                            print("%s.out.cif contains %i grid points."%
+                                    (mof, ngrid))
                     else:
                         for i in groups:
                             fnl_dic[i] += 1
@@ -436,6 +427,21 @@ class Selector(object):
 
         self.write_dataset(dataset, gridmax)
         # TODO(pboyd): add partial considerations.
+
+    def gridmaxtest(self, mofname):
+        """Determine the maximum number of grid points needed for the esp."""
+        # have to source the correct file.
+        if mofname.endswith('.cif'):
+            mofname = mofname[:-4]
+        dirmof = (LOOKUPDIR + '/' + 
+                  mofname + '.out.cif')
+        ngrid = -1
+        if os.path.isfile(dirmof):
+            from_cif = CifFile(dirmof)
+            ngrid = GrabGridPoints(from_cif.cell,
+                                   from_cif.atom_symbols,
+                                   from_cif.cart_coordinates)
+        return ngrid 
 
     def write_dataset(self, dataset, gridmax):
         """Writes the data to a file."""
@@ -735,6 +741,7 @@ class GrabGridPoints(int):
             if search_string in line:
                 parse = line.lstrip(search_string)
                 return int(parse.strip())
+        return -1
  
 class CifFile(object):
     """This class will grab data from the cif file such as the
