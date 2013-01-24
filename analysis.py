@@ -29,6 +29,10 @@ ATOM_NUM = [
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 WORKDIR = ""
+ORG_MAX = 3
+ORG_PAIR_MAX = 5
+DATA_MAX = 30
+FNL_MAX = 5
 
 class CSV(dict):
     """
@@ -285,9 +289,7 @@ class Selector(object):
         """
         chosen = []
         dataset = {}
-        inclusive_max = 120
-        partial_max = 100
-        group_max = 20
+        organics = {}
         if inclusive and partial:
             # check if any co-exist in these lists
             pair = [set(i) for i in itertools.product(inclusive, partial)
@@ -314,6 +316,7 @@ class Selector(object):
                         ind = moflist.index(mof)
                         moflist.pop(ind)
                         skip = False
+                        met, org1, org2, top, fnl = parse_mof_data(mof)
                     except IndexError:
                         print("Finished without filling list entirely!")
                         mof = None
@@ -330,8 +333,17 @@ class Selector(object):
                         # perform a weighted check against the uptake.
                         if exp(-uptake/4.) < random.random():
                             skip = True
+                    pair_count = organics.setdefault(
+                            tuple(sorted([org1(), org2()])), 0)
+                    org1count = organics.setdefault(org1(), 0)
+                    org2count = organics.setdefault(org2(), 0)
 
-                    if group_count >= group_max:
+                    if ((pair_count >= ORG_PAIR_MAX) or
+                       (org1count >= ORG_MAX) or
+                       (org2count >= ORG_MAX)):
+                        skip = True
+
+                    if group_count >= FNL_MAX:
                         skip = True
                         done = True
 
@@ -347,6 +359,9 @@ class Selector(object):
                                 dataset.setdefault(tuple((group,)), []).\
                                         append(mof)
                                 self.mof_dic[mof]['ngrid'] = ngrid
+                                organics[org1()] += 1
+                                organics[org2()] += 1
+                                organics[tuple(sorted([org1(), org2()]))] += 1
                             else:
                                 print("%s.out.cif contains %i grid points."%
                                     (mof, ngrid))
@@ -355,6 +370,9 @@ class Selector(object):
                             group_count += 1
                             chosen.append(mof)
                             dataset.setdefault(tuple((group,)), []).append(mof)
+                            organics[org1()] += 1
+                            organics[org2()] += 1
+                            organics[tuple(sorted([org1(), org2()]))] += 1
 
         elif exclude and not inclusive:
             fnl_dic = {}
@@ -374,11 +392,20 @@ class Selector(object):
                     ind = moflist.index(mof)
                     moflist.pop(ind)
                     skip = False
+                    pair_count = organics.setdefault(
+                        tuple(sorted([org1(), org2()])), 0)
+                    org1count = organics.setdefault(org1(), 0)
+                    org2count = organics.setdefault(org2(), 0)
+
                 except IndexError:
                     print("Finished without filling list entirely!")
                     mof = None
                     skip = True
                     done = True
+                    pair_count = ORG_PAIR_MAX + 1
+                    org1count = ORG_MAX + 1
+                    org2count = ORG_MAX + 1
+
                 try:
                     groups = self.mof_dic[mof]['functional_groups'].keys()
                 except KeyError:
@@ -388,8 +415,14 @@ class Selector(object):
                     skip = True
                 try:
                     uptake = self.mof_dic[mof]['old_uptake']
+
                 except KeyError:
                     uptake = 0.0
+
+                if ((pair_count >= ORG_PAIR_MAX) or
+                   (org1count >= ORG_MAX) or
+                   (org2count >= ORG_MAX)):
+                    skip = True
                 # perform a weighted check against the uptake.
                 if self.weight:
                     if exp(-uptake/4.) < random.random():
@@ -397,7 +430,7 @@ class Selector(object):
                 for i in groups:
                     if i in exclude:
                         skip = True
-                    elif fnl_dic[i] > group_max:
+                    elif fnl_dic[i] > FNL_MAX:
                         skip = True
 
                 if not skip:
@@ -412,6 +445,11 @@ class Selector(object):
                             mofcount += 1
                             dataset.setdefault(tuple(groups), []).append(mof)
                             self.mof_dic[mof]['ngrid'] = ngrid
+                            
+                            organics[org1()] += 1
+                            organics[org2()] += 1
+                            organics[tuple(sorted([org1(), org2()]))] += 1
+
                         else:
                             print("%s.out.cif contains %i grid points."%
                                     (mof, ngrid))
@@ -421,8 +459,11 @@ class Selector(object):
                         chosen.append(mof)
                         mofcount += 1
                         dataset.setdefault(tuple(groups), []).append(mof)
+                        organics[org1()] += 1
+                        organics[org2()] += 1
+                        organics[tuple(sorted([org1(), org2()]))] += 1
 
-                if mofcount >= inclusive_max:
+                if mofcount >= DATA_MAX:
                     done = True
 
         self.write_dataset(dataset, gridmax)
