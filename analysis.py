@@ -29,10 +29,10 @@ ATOM_NUM = [
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 WORKDIR = ""
-ORG_MAX = 3
+ORG_MAX = 10
 ORG_PAIR_MAX = 5
-DATA_MAX = 30
-FNL_MAX = 5
+DATA_MAX = 120
+FNL_MAX = 20
 
 class CSV(dict):
     """
@@ -696,7 +696,7 @@ class CommandLine(object):
                                "allow the structures to be chosen")
         parser.add_option("-e", "--extract", action="store", type="string",
                           dest="extract",
-                          help="write a report on a list of MOFs which" + \
+                          help="write a report on a list of MOFs which " + \
                                "contains counting of functional groups etc.")
 
         (local_options, local_args) = parser.parse_args()
