@@ -698,6 +698,12 @@ class CommandLine(object):
                           dest="extract",
                           help="write a report on a list of MOFs which " + \
                                "contains counting of functional groups etc.")
+        parser.add_option("-t", "--topranked", action="storetrue",
+                          dest="top",
+                          help="create a dataset of top ranked structures.")
+        parser.add_option("-N", "--mofcount", action="store", type="int",
+                          dest="nummofs",
+                          help="Number of MOFs to include in the set.")
 
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
