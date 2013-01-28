@@ -312,12 +312,12 @@ class Selector(object):
         else:
             ranked_list = self.rank_by_uptake(moflist)
             for mof in ranked_list[:DATA_MAX]:
-                groups = self.mof_dic[mof]['functional_groups']
+                groups = self.mof_dic[mof]['functional_groups'].keys()
                 ngrid = self.grid_points(mof, gridmax)
                 ngrid_test = (ngrid > 0 and (ngrid <= gridmax if
                               gridmax is not None else True))
                 if ngrid_test:
-                    dataset.setdefault(groups, []).append(mof)
+                    dataset.setdefault(tuple(groups), []).append(mof)
 
         self.write_dataset(dataset, gridmax=None)
 
@@ -386,8 +386,11 @@ class Selector(object):
             try:
                 (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
             except ValueError:
+                # doesn't find two functional groups in the dictionary
                 fnl_grp1, fnl_grp2 = None, None
             except KeyError:
+                # doesn't find the key [mof] or ['functional_groups'] in their
+                # associated dictionaries
                 fnl_grp1, fnl_grp2 = None, None
 
             org_max = self.check_dictionary_counts(organics_count,
@@ -471,10 +474,13 @@ class Selector(object):
         os.chdir(WORKDIR)
         basename = ""
         if self.metalind:
-            for key, value in self.metal_indices.items():
-                for index in value:
-                    if index in self.metalind:
-                        basename += "%s_"%key
+            metal_titles = []
+            for met in self.metalind:
+                for key, value in self.metal_indices.items():
+                    if met in value:
+                        metal_titles.append(key)
+            for metal in set(metal_titles):
+                basename += "%s_"%metal
         basename += "dataset"
         count = 0
         filename = create_csv_filename(basename) 
