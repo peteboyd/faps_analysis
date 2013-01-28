@@ -519,10 +519,13 @@ class Selector(object):
 
         for key, value in self.mof_dic.iteritems():
             try:
-                (group1, group2) = set(value['functional_groups'].keys())
+                (group1, group2) = value['functional_groups'].keys()
             except KeyError:
                 value['functional_groups'] = {"None1":[], "None2":[]}
                 (group1, group2) = (None, None)
+            except ValueError:
+                group1, group2 = None, None
+
             if group1 in exclude or group2 in exclude:
                 # do not append
                 pass
