@@ -31,9 +31,10 @@ ATOM_NUM = [
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 WORKDIR = ""
 ORG_MAX = 10
-ORG_PAIR_MAX = 5
+ORG_PAIR_MAX = ORG_MAX / 2
 DATA_MAX = 0
 FNL_MAX = 20
+FNL_PAIR_MAX = FNL_MAX / 2
 
 class CSV(dict):
     """
@@ -392,7 +393,7 @@ class Selector(object):
             fnl_max = self.check_dictionary_counts(fnl_groups_count, 
                                                    fnl_group1=fnl_grp1, 
                                                    fnl_group2=fnl_grp2)
-            upt_wght = self.check_uptake_weight(uptake, weight)
+            upt_wght = self.check_uptake_weight(uptake)
 
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
@@ -437,8 +438,8 @@ class Selector(object):
             dictionary.setdefault(arg, 0)
             dictionary[arg] += 1
 
-    def check_uptake_weight(self, uptake, weight):
-        if weight:
+    def check_uptake_weight(self, uptake):
+        if self.weight:
             if exp(-uptake/4.) < random.random():
                 return False
         return True
@@ -643,6 +644,8 @@ class CommandLine(object):
                 "%prog -s -M Cu -i F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
                 " -G 150000 -I used_mofs -c combined.csv " + \
                 "-L /scratch/tdaff/FinalCif\n" + \
+                "%prog -t -M Cu,Zn -x F,Cl,Br,I,SO3H,NHMe -q allsql.sqlout" +\
+                " -G 150000 -I used_mofs -c combined.csv -N 300 -F 20\n" + \
                 "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
         parser = OptionParser(usage=usage)
         parser.add_option("-r", "--report", action="store_true",
@@ -784,7 +787,7 @@ class GrabGridPoints(int):
             print "ERROR in EGULP calculation!"
             return -1
         else:
-            os.remove(i.geo_file)
+            os.remove(self.geo_file)
             return self._grab_ngrid_points(comm[0].split('\n')) 
 
     def _grab_ngrid_points(self, lines):
