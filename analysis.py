@@ -379,14 +379,18 @@ class Selector(object):
             except IndexError:
                 print("Sampled all MOFs without completing list! Writing "
                     + "output file anyways..")
-
                 self.write_dataset(dataset, gridmax)
                 return
-
             met, org1, org2, top, fnl = parse_mof_data(mof)
-
             uptake = self.mof_dic[mof]['csv_uptake']
-            (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
+            try:
+                (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
+            except ValueError:
+                print self.mof_dic[mof]['functional_groups']
+                fnl_grp1, fnl_grp2 = None, None
+            except KeyError:
+                fnl_grp1, fnl_grp2 = None, None
+
             org_max = self.check_dictionary_counts(organics_count,
                                                 organic1=org1(),
                                                 organic2=org2())
