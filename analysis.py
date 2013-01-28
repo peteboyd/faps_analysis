@@ -300,7 +300,7 @@ class Selector(object):
                 # obtain list of mofs containing group,
                 partial_list = self.isolate_group(moflist, group)
                 ranked_list = self.rank_by_uptake(partial_list)
-                groups = self.mof_dic[mof]['functional_groups']
+                groups = self.mof_dic[mof]['functional_groups'].keys()
                 for mof in ranked_list:
                     ngrid = self.grid_points(mof, gridmax)
                     ngrid_test = (ngrid > 0 and (ngrid <= gridmax if
@@ -386,7 +386,6 @@ class Selector(object):
             try:
                 (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
             except ValueError:
-                print self.mof_dic[mof]['functional_groups']
                 fnl_grp1, fnl_grp2 = None, None
             except KeyError:
                 fnl_grp1, fnl_grp2 = None, None
@@ -402,7 +401,7 @@ class Selector(object):
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
                          gridmax is not None else True))
-            if ngrid_test and org_max and fnl_max \
+            if ngrid_test and not org_max and not fnl_max \
                     and upt_wght:
                 # increment counts 
                 self.increment_dictionary_counts(organics_count,
@@ -473,8 +472,9 @@ class Selector(object):
         basename = ""
         if self.metalind:
             for key, value in self.metal_indices.items():
-                if value in self.metalind:
-                    basename += "%s_"%key
+                for index in value:
+                    if index in self.metalind:
+                        basename += "%s_"%key
         basename += "dataset"
         count = 0
         filename = create_csv_filename(basename) 
