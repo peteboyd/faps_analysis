@@ -206,7 +206,7 @@ class Selector(object):
             ]
 
     def __init__(self, mof_dic, metals=None, weight=False, ignore='used_mofs'):
-        self.mof_dic = mof_dic
+        self.mof_dic = mof_dic.copy()
         self.weight = weight
         used_mofs = MOFlist(ignore)
         # remove mofs in the dictionary which have already been used
@@ -220,8 +220,9 @@ class Selector(object):
         if metals is not None:
            for metal in metals:
                try:
-                   self.metalind.append(self.metal_indices[metal])
-
+                   indices = self.metal_indices[metal]
+                   for ind in indices:
+                       self.metalind.append(ind)
                except KeyError:
                    print("ERROR: metal %s is not in the database!")
                    sys.exit(1)
@@ -292,7 +293,7 @@ class Selector(object):
 
         """
         dataset = {}
-        moflist = self.gen_moflist(inclusive, partial, exclusive)
+        moflist = self.gen_moflist(inclusive, partial, exclude)
         if inclusive or partial:
             for group in inclusive + partial:
                 # obtain list of mofs containing group,
@@ -366,8 +367,8 @@ class Selector(object):
                           " partial lists. Appending to inclusive only...")
                     partial.pop(partial.index(group))
         # generate a list of valid mofs which obey the inclusive, partial and 
-        # exclusive lists.
-        moflist = self.gen_moflist(inclusive, partial, exclusive)
+        # exclude lists.
+        moflist = self.gen_moflist(inclusive, partial, exclude)
         done = False
         while not done:
             try:
@@ -636,7 +637,7 @@ class CommandLine(object):
         usage = "%prog [options]\n" + \
                 "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
                 " -c Cu_dataset.csv\n" + \
-                "%prog -s -M Cu -n F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
+                "%prog -s -M Cu -i F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
                 " -G 150000 -I used_mofs -c combined.csv " + \
                 "-L /scratch/tdaff/FinalCif\n" + \
                 "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
@@ -915,24 +916,23 @@ def pair_csv_fnl(mof, fnl):
 
     del fnl
 
-def create_a_dataset(csvfile=None, sqlfile=None, metals=None,
-                     inclusive=None, exclude=None, gridmax=None,
+def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
+                     inclusive=[], exclude=[], partial=[],
+                     gridmax=None,
                      ignore=None):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
     """
-    mof = CSV(csvfile)
-    mof.read_from_csv_multiple()
+    mofs = CSV(csvfile)
+    mofs.read_from_csv_multiple()
     fnl = FunctionalGroups(sqlfile)
-    pair_csv_fnl(mof, fnl)
-    sel = Selector(mof, metals=metals, ignore=ignore)
+    pair_csv_fnl(mofs, fnl)
+    sel = Selector(mofs, metals=metals, ignore=ignore)
     sel.trim_organics()
     sel.trim_non_existing()
-    sel.random_select(inclusive=inclusive, exclude=exclude, gridmax=gridmax)
-    #sel.random_select(exclude=["F", "Cl", "Br", "I", "SO3H", 
-    #                                    "NO2", "HCO", "NH2"])
-    #sel.random_select(inclusive=["F", "Cl", "Br", "I", "SO3H"])
+    sel.random_select(exclude=exclude, inclusive=inclusive, partial=partial, 
+                      gridmax=gridmax)
 
 def write_report(directory=None, sqlfile=None, csvfile=None):
     """Write a report on some new uptake data located in 'directory' based
@@ -952,8 +952,9 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     data.write_data(filename=dir + "/" + basename + ".report.csv")
 
 def generate_top_structures(csvfile=None, sqlfile=None, 
-                            inclusive=[], exclude=[],
-                            metals=None,
+                            exclude=[], inclusive=[], partial=[],
+                            metals=[],
+                            gridmax=None,
                             ignore=None):
     
     mofs = CSV(csvfile)
@@ -963,7 +964,8 @@ def generate_top_structures(csvfile=None, sqlfile=None,
     sel = Selector(mofs, metals=metals, ignore=ignore)
     sel.trim_organics()
     sel.trim_non_existing()
-    sel.top_select(inclusive=inclusive, exclude=exclude)
+    sel.top_select(exclude=exclude, inclusive=inclusive, 
+                   partial=partial, gridmax=gridmax)
 
 def extract_info(file_name=None, sqlfile=None, csvfile=None):
     """Extract as much information from a list of mofnames, and provide
@@ -1195,13 +1197,6 @@ def main():
     FNL_MAX = cmd.options.fnlmax
 
     if cmd.options.dataset:
-        inclusive, exclude = None, None
-        if cmd.options.exclude:
-            exclude = cmd.options.exclude.split(",")
-        if cmd.options.inclusive:
-            inclusive = cmd.options.inclusive.split(",")
-        if not cmd.options.exclude and not cmd.options.inclusive:
-            raise Error ("No exclusions or inclusions?")
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)
             if not test:
@@ -1221,16 +1216,12 @@ def main():
             print("Excluding MOFs with gridpoints exceeding %i"%
                     (cmd.options.maxgridpts))
 
-        if cmd.options.metals is not None:
-            metals = cmd.options.metals.split(",")
-        else:
-            metals = None
-
         create_a_dataset(csvfile=cmd.options.csvfilename,
                          sqlfile=cmd.options.sqlname,
-                         metals=metals,
-                         inclusive=inclusive,
-                         exclude=exclude,
+                         metals=cmd.options.metals,
+                         inclusive=cmd.options.inclusive,
+                         exclude=cmd.options.exclude,
+                         partial=cmd.options.partial,
                          gridmax=cmd.options.maxgridpts,
                          ignore=cmd.options.ignorefile)
                          
@@ -1305,21 +1296,14 @@ def main():
             if not test:
                 print("ERROR: could not find the sql file")
                 sys.exit()
-        if cmd.options.metals is not None:
-            metals = cmd.options.metals.split(",")
-        else:
-            metals = None
-
-        inclusive = (cmd.options.inclusive.split(",") if
-                     cmd.options.inclusive else [])
-        exclude = (cmd.options.exclude.split(",") if 
-                   cmd.options.exclude else [])
 
         generate_top_structures(csvfile=cmd.options.csvfilename,
                                 sqlfile=cmd.options.sqlname,
-                                inclusive=inclusive,
-                                exclude=exclude,
-                                metals=metals,
+                                exclude=cmd.options.exclude,
+                                inclusive=cmd.options.inclusive,
+                                partial=cmd.options.partial,
+                                metals=cmd.options.metals,
+                                gridmax=cmd.options.maxgridpts,
                                 ignore=cmd.options.ignorefile
                                 )
 
