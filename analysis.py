@@ -306,7 +306,7 @@ class Selector(object):
                                   gridmax is not None else True))
                     if ngrid_test:
                         groups = self.mof_dic[mof]['functional_groups'].keys()
-                        dataset.setdefault(groups, []).append(mof)
+                        dataset.setdefault(tuple(groups), []).append(mof)
             for key, value in dataset:
                 dataset[key] = value[:FNL_MAX]
         else:
