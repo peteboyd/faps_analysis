@@ -11,6 +11,7 @@ import sys
 import random
 from math import cos, sin, sqrt, pi, exp
 import numpy as np
+import scipy
 from optparse import OptionParser
 import subprocess
 import zipfile
@@ -298,7 +299,11 @@ class Selector(object):
         if inclusive or partial:
             for group in inclusive + partial:
                 # obtain list of mofs containing group,
+
                 partial_list = self.isolate_group(moflist, group)
+                print group
+                for mof in partial_list:
+                    print mof
                 ranked_list = self.rank_by_uptake(partial_list)
                 for mof in ranked_list:
                     ngrid = self.grid_points(mof, gridmax)
@@ -545,7 +550,8 @@ class Selector(object):
                 and partial:
                 # append
                 moflist.append(key)
-            elif (group1 in inclusive and group2 is None) and inclusive:
+            elif ((group1 in inclusive and group2 is None) or
+                  (group1 is None and group2 in inclusive)) and inclusive:
                 # append
                 moflist.append(key)
             elif not inclusive and not partial:
@@ -562,6 +568,8 @@ class GrabNewData(object):
         self.extended = extended
         # base directory containing all the faps job info.
         self.basedir = basedir
+        # flag mofs with no data to not be computed in the correlations
+        self.bad_data = []
 
     def grab_data(self):
         """Descends into directories and grabs appropriate data."""
@@ -578,11 +586,13 @@ class GrabNewData(object):
                 else:
                     print "ERROR: could not find %s-CO2.csv"%(mof)
                     new_uptake = 0.
+                    self.bad_data.append(mof)
                 os.chdir('..')
             else:
                 print "ERROR: could not find %s in the directory %s"%(
                         mof, self.basedir)
                 new_uptake = 0. 
+                self.bad_data.append(mof)
 
             self.mofs[mof]['new_uptake'] = new_uptake
         os.chdir(WORKDIR)
@@ -607,9 +617,14 @@ class GrabNewData(object):
                     "Functional_grp2\n"
 
         outstream.writelines(header)
+        # csvupt and newupt will be used to calculate correlation coefficients
+        csvupt, newupt = [], []
         for mof in self.mofs.keys():
             csv_uptake = self.mofs[mof]['csv_uptake']
             new_uptake = self.mofs[mof]['new_uptake']
+            if mof not in self.bad_data:
+                csvupt.append(csv_uptake)
+                newupt.append(new_uptake)
             try:
                 replaced_groups = self.mofs[mof]['functional_groups']
             except KeyError:
@@ -637,6 +652,10 @@ class GrabNewData(object):
                 line = fmt%(mof, csv_uptake, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
+        rho, pval = scipy.stats.spearmanr(csvupt, newupt)
+        print("Spearman rank: %7.5f"%rho)
+        pears = scipy.stats.pearsonr(csvupt, newupt)
+        print("Pearson correlation: %7.5f"%pears)
         print("Done.")
         outstream.close()
 
