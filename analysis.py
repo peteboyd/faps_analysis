@@ -301,9 +301,6 @@ class Selector(object):
                 # obtain list of mofs containing group,
 
                 partial_list = self.isolate_group(moflist, group)
-                print group
-                for mof in partial_list:
-                    print mof
                 ranked_list = self.rank_by_uptake(partial_list)
                 for mof in ranked_list:
                     ngrid = self.grid_points(mof, gridmax)
@@ -312,7 +309,7 @@ class Selector(object):
                     if ngrid_test:
                         groups = self.mof_dic[mof]['functional_groups'].keys()
                         dataset.setdefault(tuple(groups), []).append(mof)
-            for key, value in dataset:
+            for key, value in dataset.items():
                 dataset[key] = value[:FNL_MAX]
         else:
             ranked_list = self.rank_by_uptake(moflist)
