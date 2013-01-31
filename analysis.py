@@ -1076,6 +1076,42 @@ def combine_csvs(*args):
         pears, p2 = stats.pearsonr(upt1, upt2)
         print("Pearson correlation: %7.5f"%pears)
 
+    names = {}
+    [names.setdefault(i.split('.')[0], 0) for i in basenames]
+    name = names.keys()[0]
+    name += ".merged"
+    write_csv(name, merged)
+
+def write_csv(basename, dic):
+    """Writes a specific csv where the dictionary contains a mof name
+    followed by a dictionary of values.
+
+    """
+    filename = create_csv_filename(basename)
+    print("Writing to %s.csv"%filename)
+    outstream = open(filename + ".csv", "w")
+    lead = []
+    headings = {}
+    # set up the headings first, then append data
+    for mof, data in dic.items():
+        [headings.setdefault(i, []) for i in data.keys()]
+    # now append data
+    for mof, data in dic.items():
+        lead.append(mof)
+        headings["MOFname"].append(mof)
+        for head in headings.keys():
+            try:
+                headings[head].append(data[head])
+            except KeyError:
+                headings[head].append("")
+    outstream.writelines("MOFname," + ",".join(headings.keys()))
+    for ind, entries in enumerate(itertools.izip(*headings.values())):
+        line = "%s,"%lead[ind]
+        line += ",".join([str(i) for i in entries])
+        outstream.writelines(line)
+    print("Done.")
+    outstream.close()
+
 def extract_info(file_name=None, sqlfile=None, csvfile=None):
     """Extract as much information from a list of mofnames, and provide
     an ammended report with the findings.
