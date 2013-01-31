@@ -1051,16 +1051,15 @@ def combine_csvs(*args):
     merged = {}
     # re-name the uptake column, this will be the only columns which
     # are not over-written
-    for csv in csvs:
+    for ind, csv in enumerate(csvs):
         for key, dic in csv.items():
             uptake = dic.pop('mmol/g')
-            dic['mmol/g-%s'%basename[ind]] = uptake
+            dic['mmol/g-%s'%basenames[ind]] = uptake
             merged.setdefault(key, {})
             merged[key].update(dic)
     # combine uptake columns
     corr = [[]]*len(basenames)
-    [corr.setdefault(i, []) for i in basenames]
-    for mof, value in merged:
+    for mof, value in merged.items():
         if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
             if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
                 [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
@@ -1103,16 +1102,16 @@ def write_csv(basename, dic):
     # now append data
     for mof, data in dic.items():
         lead.append(mof)
-        headings["MOFname"].append(mof)
         for head in headings.keys():
             try:
                 headings[head].append(data[head])
             except KeyError:
                 headings[head].append("")
-    outstream.writelines("MOFname," + ",".join(headings.keys()))
+    outstream.writelines("MOFname," + ",".join(headings.keys()) + "\n")
     for ind, entries in enumerate(itertools.izip(*headings.values())):
         line = "%s,"%lead[ind]
         line += ",".join([str(i) for i in entries])
+        line += "\n"
         outstream.writelines(line)
     print("Done.")
     outstream.close()
