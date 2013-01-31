@@ -1036,13 +1036,45 @@ def generate_top_structures(csvfile=None, sqlfile=None,
     sel.top_select(exclude=exclude, inclusive=inclusive, 
                    partial=partial, gridmax=gridmax)
 
-def combine_csvs(csvfiles = []):
+def combine_csvs(*args):
     """Combine csv files to a single, unified csv.  Compute correlation
     coefficients for the uptake columns, if the data match.
 
     """
-
-
+    basenames = [clean(i.split("/")[-1]) for i in args]
+    csvs = [CSV(i) for i in args]
+    merged = {}
+    # re-name the uptake column, this will be the only columns which
+    # are not over-written
+    for csv in csvs:
+        for key, dic in csv.items():
+            uptake = dic.pop('mmol/g')
+            dic['mmol/g-%s'%basename[ind]] = uptake
+            merged.setdefault(key, {})
+            merged[key].update(dic)
+    # combine uptake columns
+    corr = [[]]*len(basenames)
+    [corr.setdefault(i, []) for i in basenames]
+    for mof, value in merged:
+        if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
+            if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
+                [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
+                        i in basenames]
+            else:
+                print("MOF %s not included in correlation calculations "+
+                        "because of 0 value for uptake"%mof)
+        else:
+            print("MOF %s is not included in correlation calculations "%mof +
+                    "because it couldn't be found in one or more csv files.")
+    for upt1, upt2 in itertools.combinations(corr, 2):
+        ind1 = corr.index(upt1)
+        ind2 = corr.index(upt2)
+        print("Correlation coefficients for %s, and %s:"%(
+                 basenames[ind1], basenames[ind2]))
+        rho, pval = stats.spearmanr(upt1, upt2)
+        print("Spearman rank: %7.5f"%rho)
+        pears, p2 = stats.pearsonr(upt1, upt2)
+        print("Pearson correlation: %7.5f"%pears)
 
 def extract_info(file_name=None, sqlfile=None, csvfile=None):
     """Extract as much information from a list of mofnames, and provide
