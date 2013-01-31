@@ -52,14 +52,14 @@ class CSV(dict):
     def read_from_csv_multiple(self):
         """Reads in a file, stores data in memory."""
         filestream = open(self.filename, "r")
+        # read in the first line of the file as the headings
+        # currently assumes only one uptake value at a statepoint
         headings = filestream.readline().strip().lstrip("#").split(",")
         mofind = headings.index(self._mof_name_column)
         try:
             uptind = headings.index(self._uptake_column)
         except ValueError:
             pass
-        # read in the first line of the file as the headings
-        # currently assumes only one uptake value at a statepoint
         for line in filestream:
             parsed = line.split(",")
             mofname = parsed[mofind].strip()
@@ -607,10 +607,10 @@ class GrabNewData(object):
         print("Writing report to %s.csv..."%(filename))
         outstream = open(filename + ".csv", "w")
         if self.extended:
-            header = "MOFname,csv_uptake,new_uptake,Functional_grp1," +\
+            header = "MOFname,mmol/g,Functional_grp1," +\
                     "Functional_grp2,grp1_replacements,grp2_replacements\n"
         else:
-            header = "MOFname,csv_uptake,new_uptake,Functional_grp1," +\
+            header = "MOFname,mmol/g,Functional_grp1," +\
                     "Functional_grp2\n"
 
         outstream.writelines(header)
@@ -641,12 +641,12 @@ class GrabNewData(object):
                 rep_2 = ["N/A"]
 
             if self.extended:
-                fmt = "%s,%f,%f,%s,%s,%s,%s\n"
-                line = fmt%(mof, csv_uptake, new_uptake,
+                fmt = "%s,%f,%s,%s,%s,%s\n"
+                line = fmt%(mof, new_uptake,
                             fnl_grp1, fnl_grp2, rep_1, rep_2)
             else:
-                fmt = "%s,%f,%f,%s,%s\n"
-                line = fmt%(mof, csv_uptake, new_uptake, fnl_grp1,
+                fmt = "%s,%f,%s,%s\n"
+                line = fmt%(mof, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
         rho, pval = scipy.stats.spearmanr(csvupt, newupt)
@@ -998,6 +998,14 @@ def generate_top_structures(csvfile=None, sqlfile=None,
     sel.trim_non_existing()
     sel.top_select(exclude=exclude, inclusive=inclusive, 
                    partial=partial, gridmax=gridmax)
+
+def combine_csvs(csvfiles = []):
+    """Combine csv files to a single, unified csv.  Compute correlation
+    coefficients for the uptake columns, if the data match.
+
+    """
+
+
 
 def extract_info(file_name=None, sqlfile=None, csvfile=None):
     """Extract as much information from a list of mofnames, and provide
