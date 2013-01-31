@@ -42,58 +42,61 @@ class CSV(dict):
     Reads in a .csv file for data parsing.
 
     """
-    def __init__(self, filename):
+    def __init__(self, filename, _MOFNAME=True):
         self._mof_name_column = "MOFname"
         self._uptake_column = "mmol/g"
         self._temp_column = "T/K"
         self._press_column = "p/bar"
         self.filename = filename
+        head_read = open(filename, "r")
+        self.headings = head_read.readline().lstrip("#").split(",")
+        head_read.close()
+        if _MOFNAME:
+            self._parse_by_mofname()
+        else:
+            self._parse_by_heading()
 
-    def read_from_csv_multiple(self):
-        """Reads in a file, stores data in memory."""
+    def _parse_by_heading(self):
+        """The CSV dictionary will store data to heading keys"""
         filestream = open(self.filename, "r")
-        # read in the first line of the file as the headings
-        # currently assumes only one uptake value at a statepoint
-        headings = filestream.readline().strip().lstrip("#").split(",")
-        mofind = headings.index(self._mof_name_column)
-        try:
-            uptind = headings.index(self._uptake_column)
-        except ValueError:
-            pass
+        # burn the header, as it's already read
+        burn = filestream.readline()
         for line in filestream:
-            parsed = line.split(",")
-            mofname = parsed[mofind].strip()
-            if mofname.endswith("-CO2.csv"):
-                mofname = mofname[:-8]
-            try:
-                uptake = parsed[uptind]
-            except UnboundLocalError:
-                uptake = 0.
-            self.setdefault(mofname, {})["csv_uptake"] = float(uptake)
+            line = line.lstrip("#").split(",")
+            for ind, entry in line:
+                self.setdefault(self.headings[ind], []).append(entry)
         filestream.close()
 
-    def read_from_csv_single(self, T=None, P=None):
-        filestream = open(self.filename, "r")
-        # pull out the uptake in mmol/g from a given T and P
-        headings = filestream.readline().strip("#").split(",")
-        pressind = headings.index(self._press_column)
-        tempind = headings.index(self._temp_column)
-        uptkind = headings.index(self._uptake_column)
+    def _parse_by_mofname(self):
+        """The CSV dictionary will have MOFnames as headings and contain
+        sub-dictionaries for additional row data.
 
-        for line in filestream:
-            parsed = line.split(",")
-            if T and P:
-                if (T == float(parsed[tempind])) and\
-                        (P == float(parsed[pressind])):
-                    uptake = float(parsed[uptkind])
-                    self['new_uptake'] = uptake
+        """
+        filestream = open(self.filename, "r")
         try:
-            self['new_uptake']
-        except KeyError:
-            self['new_uptake'] = None
-            if mofname.endswith("-CO2.csv"):
-                mofname = mofname[:-8]
-            print "ERROR: Could not find the uptake values for %s"%(mofname)
+            mofind = self.headings.index(self._mof_name_column)
+        except ValueError:
+            print("ERROR: the csv file %s does not have %s as a column! "%
+                    (self.filename, self._mof_name_column) + 
+                    "EXITING ...")
+            sys.exit(0)
+
+        try:
+            uptind = self.headings.index(self._uptake_column)
+        except ValueError:
+            print("WARNING: the csv file %s does not have %s as a column"%
+                    (self.filename, self._uptake_column) +
+                    " the uptake will be reported as 0.0 mmol/g")
+        burn = filestream.readline()
+        for line in filestream:
+            line = line.lstrip("#").split(",")
+            mofname = line[mofind].strip()
+            mofname = clean(mofname)
+            try:
+                uptake = line[uptind]
+            except UnboundLocalError:
+                uptake = 0.
+            self.setdefault(mofname, {})["mmol/g"] = float(uptake)
         filestream.close()
 
 
