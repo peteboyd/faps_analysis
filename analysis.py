@@ -1058,7 +1058,7 @@ def combine_csvs(*args):
             merged.setdefault(key, {})
             merged[key].update(dic)
     # combine uptake columns
-    corr = [[]]*len(basenames)
+    corr = [[] for i in range(len(basenames))]
     for mof, value in merged.items():
         if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
             if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
