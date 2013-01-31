@@ -11,7 +11,7 @@ import sys
 import random
 from math import cos, sin, sqrt, pi, exp
 import numpy as np
-import scipy
+from scipy import stats
 from optparse import OptionParser
 import subprocess
 import zipfile
@@ -45,7 +45,7 @@ class CSV(dict):
     """
     def __init__(self, filename, _MOFNAME=True):
         self._columns = {"MOF":"MOFname", "uptake":"mmol/g",
-                      "temperature":"T/K", "pressure":"p(bar)"}
+                      "temperature":"T/K", "pressure":"p/bar"}
         self.filename = filename
         head_read = open(filename, "r")
         self.headings = head_read.readline().lstrip("#").split(",")
@@ -55,7 +55,7 @@ class CSV(dict):
         else:
             self._parse_by_heading()
 
-    def obtain_data(_TYPE="float", column, **kwargs):
+    def obtain_data(self, column, _TYPE="float", **kwargs):
         """return the value of the data in column, based on values of 
         other columns assigned in the kwargs.
 
@@ -83,7 +83,7 @@ class CSV(dict):
             # tie an entry list index to column + kwargs keys
             kwargs_id =[i for i in range(len(entry)) if trunc_keys[i] in 
                     kwargs.keys()]
-            if all([entry[i] == kwargs[trunc_keys[i]] for i in val_id]):
+            if all([entry[i] == kwargs[trunc_keys[i]] for i in kwargs_id]):
                 # grab the entry for the column
                 col = entry[colind]
                 return float(col) if _TYPE is "float" else col
@@ -99,7 +99,12 @@ class CSV(dict):
         burn = filestream.readline()
         for line in filestream:
             line = line.lstrip("#").split(",")
-            for ind, entry in line:
+            for ind, entry in enumerate(line):
+                try:
+                    entry = float(entry)
+                except ValueError:
+                    #probably a string
+                    pass
                 self.setdefault(self.headings[ind], []).append(entry)
         filestream.close()
 
@@ -366,7 +371,7 @@ class Selector(object):
         for mof in mof_list:
             # grab uptake
             try:
-                uptake = self.mof_dic[mof]['csv_uptake']
+                uptake = self.mof_dic[mof]['mmol/g']
             except KeyError:
                 uptake = 0.
 
@@ -422,7 +427,7 @@ class Selector(object):
                 self.write_dataset(dataset, gridmax)
                 return
             met, org1, org2, top, fnl = parse_mof_data(mof)
-            uptake = self.mof_dic[mof]['csv_uptake']
+            uptake = self.mof_dic[mof]['mmol/g']
             try:
                 (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
             except ValueError:
@@ -542,7 +547,7 @@ class Selector(object):
             for mof in mofs:
                 print "     " + mof
                 try:
-                    uptake = self.mof_dic[mof]['csv_uptake']
+                    uptake = self.mof_dic[mof]['mmol/g']
                 except KeyError:
                     uptake = 0.
                 line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
@@ -615,7 +620,6 @@ class GrabNewData(object):
                 os.chdir(mof)
                 if os.path.isfile(mof + "-CO2.csv"):
                     data = CSV(mof + "-CO2.csv", _MOFNAME=False)
-
                     new_uptake = data.obtain_data("mmol/g",
                                                   temperature=temp,
                                                   pressure=press)
@@ -636,7 +640,7 @@ class GrabNewData(object):
     def write_data(self, filename="default.report.csv"):
         """Write all MOF data to a csv file."""
         os.chdir(WORKDIR)
-        basename = clean(basename)
+        basename = clean(filename)
         count = 0
         # make sure there's no overwriting, goes up to 99
         filename = create_csv_filename(basename)
@@ -653,7 +657,7 @@ class GrabNewData(object):
         # csvupt and newupt will be used to calculate correlation coefficients
         csvupt, newupt = [], []
         for mof in self.mofs.keys():
-            csv_uptake = self.mofs[mof]['csv_uptake']
+            csv_uptake = self.mofs[mof]['mmol/g']
             new_uptake = self.mofs[mof]['new_uptake']
             if mof not in self.bad_data:
                 csvupt.append(csv_uptake)
@@ -685,9 +689,9 @@ class GrabNewData(object):
                 line = fmt%(mof, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
-        rho, pval = scipy.stats.spearmanr(csvupt, newupt)
+        rho, pval = stats.spearmanr(csvupt, newupt)
         print("Spearman rank: %7.5f"%rho)
-        pears = scipy.stats.pearsonr(csvupt, newupt)
+        pears, p2 = stats.pearsonr(csvupt, newupt)
         print("Pearson correlation: %7.5f"%pears)
         print("Done.")
         outstream.close()
@@ -992,7 +996,6 @@ def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
 
     """
     mofs = CSV(csvfile)
-    mofs.read_from_csv_multiple()
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
     sel = Selector(mofs, metals=metals, ignore=ignore)
@@ -1007,7 +1010,6 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
 
     """
     mofs = CSV(csvfile)
-    mofs.read_from_csv_multiple()
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
     data = GrabNewData(mofs, basedir=directory, extended=False)
@@ -1025,7 +1027,6 @@ def generate_top_structures(csvfile=None, sqlfile=None,
                             ignore=None):
     
     mofs = CSV(csvfile)
-    mofs.read_from_csv_multiple()
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
     sel = Selector(mofs, metals=metals, ignore=ignore)
@@ -1048,7 +1049,6 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
 
     """
     all_mofs = CSV(csvfile)
-    all_mofs.read_from_csv_multiple()
     all_fnls = FunctionalGroups(sqlfile)
     pair_csv_fnl(all_mofs, all_fnls)
     mofs = MOFlist(file_name)
@@ -1186,7 +1186,6 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
         # Clear filenames
         for f in files:
             os.remove(f)
-
 
     def write_specific_csv():
         os.chdir(WORKDIR)
