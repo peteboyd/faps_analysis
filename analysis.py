@@ -16,6 +16,7 @@ from optparse import OptionParser
 import subprocess
 import zipfile
 import uuid
+import itertools
 
 DEG2RAD = pi / 180.0
 ATOM_NUM = [
@@ -43,8 +44,8 @@ class CSV(dict):
 
     """
     def __init__(self, filename, _MOFNAME=True):
-        self._mof_name_column = "MOFname"
-        self._uptake_column = "mmol/g"
+        self._columns = {"MOF":"MOFname", "uptake":"mmol/g",
+                      "temperature":"T/K", "pressure":"p(bar)"}
         self.filename = filename
         head_read = open(filename, "r")
         self.headings = head_read.readline().lstrip("#").split(",")
@@ -53,6 +54,43 @@ class CSV(dict):
             self._parse_by_mofname()
         else:
             self._parse_by_heading()
+
+    def obtain_data(_TYPE="float", column, **kwargs):
+        """return the value of the data in column, based on values of 
+        other columns assigned in the kwargs.
+
+        """
+        # create a set of lists for the data we care about
+        trunc = []
+        trunc_keys = {} 
+        # check to see if the columns are actually in the csv file
+        for ind, key in enumerate([column] + kwargs.keys()):
+            try:
+                rightkey = self._columns[key]
+            except KeyError:
+                rightkey = key
+            if rightkey not in self.headings:
+                print("Could not find the column %s in the csv file %s "%
+                        (rightkey, self.filename) + "returning...")
+                return 0. if _TYPE is "float" else None
+            else:
+                trunc.append(self[rightkey])
+                trunc_keys[ind] = key
+                if key == column:
+                    colind = ind
+    
+        for entry in itertools.izip_longest(*trunc):
+            # tie an entry list index to column + kwargs keys
+            kwargs_id =[i for i in range(len(entry)) if trunc_keys[i] in 
+                    kwargs.keys()]
+            if all([entry[i] == kwargs[trunc_keys[i]] for i in val_id]):
+                # grab the entry for the column
+                col = entry[colind]
+                return float(col) if _TYPE is "float" else col
+
+        print("Didn't find the data point requested in the csv file %s"%
+                self.filename)
+        return 0. if _TYPE is "float" else None
 
     def _parse_by_heading(self):
         """The CSV dictionary will store data to heading keys"""
@@ -72,18 +110,18 @@ class CSV(dict):
         """
         filestream = open(self.filename, "r")
         try:
-            mofind = self.headings.index(self._mof_name_column)
+            mofind = self.headings.index(self._columns["MOF"])
         except ValueError:
             print("ERROR: the csv file %s does not have %s as a column! "%
-                    (self.filename, self._mof_name_column) + 
+                    (self.filename, self._columns["MOF"]) + 
                     "EXITING ...")
             sys.exit(0)
 
         try:
-            uptind = self.headings.index(self._uptake_column)
+            uptind = self.headings.index(self._columns["uptake"])
         except ValueError:
             print("WARNING: the csv file %s does not have %s as a column"%
-                    (self.filename, self._uptake_column) +
+                    (self.filename, self._columns["uptake"]) +
                     " the uptake will be reported as 0.0 mmol/g")
         burn = filestream.readline()
         for line in filestream:
@@ -567,7 +605,7 @@ class GrabNewData(object):
         # flag mofs with no data to not be computed in the correlations
         self.bad_data = []
 
-    def grab_data(self):
+    def grab_data(self, temp=298.0, press=0.15):
         """Descends into directories and grabs appropriate data."""
         os.chdir(self.basedir)
         all_list = os.listdir('.')
@@ -576,9 +614,11 @@ class GrabNewData(object):
             if mof in directories:
                 os.chdir(mof)
                 if os.path.isfile(mof + "-CO2.csv"):
-                    data = CSV(mof + "-CO2.csv")
-                    data.read_from_csv_single(T=298.0, P=0.15)
-                    new_uptake = data['new_uptake']
+                    data = CSV(mof + "-CO2.csv", _MOFNAME=False)
+
+                    new_uptake = data.obtain_data("mmol/g",
+                                                  temperature=temp,
+                                                  pressure=press)
                 else:
                     print "ERROR: could not find %s-CO2.csv"%(mof)
                     new_uptake = 0.
