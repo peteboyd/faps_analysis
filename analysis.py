@@ -778,7 +778,7 @@ class CommandLine(object):
                           dest="fnlmax", default="20",
                           help="Maximum number of MOFs with a particular "+\
                                 "functional group.")
-        parser.add_option("-C", "--combine", action="store", type="string",
+        parser.add_option("-C", "--combine", type="string",
                           dest="combine", action="callback",
                           callback=self.parse_commas,
                           help="comma (,) delimited list of csv files to " + \
