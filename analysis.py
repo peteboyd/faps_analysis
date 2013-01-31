@@ -1065,8 +1065,8 @@ def combine_csvs(*args):
                 [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
                         i in basenames]
             else:
-                print("MOF %s not included in correlation calculations "+
-                        "because of 0 value for uptake"%mof)
+                print("MOF %s not included in correlation calculations "%mof
+                        + "because of 0 value for uptake")
         else:
             print("MOF %s is not included in correlation calculations "%mof +
                     "because it couldn't be found in one or more csv files.")
