@@ -778,6 +778,11 @@ class CommandLine(object):
                           dest="fnlmax", default="20",
                           help="Maximum number of MOFs with a particular "+\
                                 "functional group.")
+        parser.add_option("-C", "--combine", action="store", type="string",
+                          dest="combine", action="callback",
+                          callback=self.parse_commas,
+                          help="comma (,) delimited list of csv files to " + \
+                          "merge into a larger file.")
 
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
@@ -1463,6 +1468,8 @@ def main():
                                 gridmax=cmd.options.maxgridpts,
                                 ignore=cmd.options.ignorefile
                                 )
+    if cmd.options.combine:
+        combine_csvs(*cmd.options.combine)
 
 if __name__ == "__main__":
     main()
