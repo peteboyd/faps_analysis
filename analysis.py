@@ -1015,6 +1015,7 @@ def write_report(directory=None, sqlfile=None, csvfile=None):
     data = GrabNewData(mofs, basedir=directory, extended=False)
     data.grab_data()
     base_list = directory.split("/")
+    base_list = [i for i in base_list if i]
     # take the last two entries in the directory as the file name
     basename = ".".join(base_list[-2:])
     dir = WORKDIR 
