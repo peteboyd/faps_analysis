@@ -45,8 +45,6 @@ class CSV(dict):
     def __init__(self, filename, _MOFNAME=True):
         self._mof_name_column = "MOFname"
         self._uptake_column = "mmol/g"
-        self._temp_column = "T/K"
-        self._press_column = "p/bar"
         self.filename = filename
         head_read = open(filename, "r")
         self.headings = head_read.readline().lstrip("#").split(",")
@@ -151,8 +149,7 @@ class MOFlist(list):
             line = line[0]
             if "sym" in line:
                 line.lstrip("#")
-                if line.endswith("-CO2.csv"):
-                    line = line[:-8]
+                line = clean(line)
                 self.append(line)
 
         filestream.close()
@@ -459,8 +456,7 @@ class Selector(object):
     def grid_points(self, mofname, gridmax):
         """Determine the maximum number of grid points needed for the esp."""
         # have to source the correct file.
-        if mofname.endswith('.cif'):
-            mofname = mofname[:-4]
+        mofname = clean(mofname)
         dirmof = (LOOKUPDIR + '/' + 
                   mofname + '.out.cif')
         ngrid = -1
@@ -600,10 +596,7 @@ class GrabNewData(object):
     def write_data(self, filename="default.report.csv"):
         """Write all MOF data to a csv file."""
         os.chdir(WORKDIR)
-        if filename.endswith(".csv"):
-            basename = filename[:-4]
-        else:
-            basename = filename
+        basename = clean(basename)
         count = 0
         # make sure there's no overwriting, goes up to 99
         filename = create_csv_filename(basename)
@@ -913,8 +906,7 @@ def parse_cif(moffilename):
 
 
 def parse_mof_data(mofname):
-    if mofname.endswith("-CO2.csv"):
-        mofname = mofname[:-8]
+    mofname = clean(mofname)
     mofparse = mofname.split("_")
     data = mofparse[5].split(".")
     def metal_index():
@@ -1028,10 +1020,7 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
     org_pair_count = {}
     full_mof_count = {}
     for mof in mofs:
-        if mof.endswith('.out.cif'):
-            mof = mof[:-8]
-        elif mof.endswith('.cif'):
-            mof = mof[:-4]
+        mof = clean(mof)
         try:
             data = all_mofs[mof]
             mof_dat[mof] = data
@@ -1076,10 +1065,7 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
 
     def write_overall_csv():
         os.chdir(WORKDIR)
-        if file_name.endswith(".csv"):
-            basename = file_name[:-4]
-        else:
-            basename = file_name
+        basename = clean(filename)
         count = 0
         files = []
         print("Writing overall reports...")
@@ -1164,10 +1150,7 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
 
     def write_specific_csv():
         os.chdir(WORKDIR)
-        if file_name.endswith(".csv"):
-            basename = file_name[:-4]
-        else:
-            basename = file_name
+        basename = clean(file_name)
         count = 0
         filename = basename + ".specific_report"
         filename = create_csv_filename(filename)
@@ -1227,6 +1210,29 @@ def create_csv_filename(basename, extension=".csv"):
         count += 1
         filename = basename + ".%02d"%(count)
     return filename
+
+def clean(name):
+    if name.endswith('.cif'):
+        name = name[:-4]
+    elif name.endswith('.niss'):
+        name = name[:-5]
+    elif name.endswith('-CO2.csv'):
+        name = name[:-8]
+    elif name.endswith('.flog'):
+        name = name[:-5]
+    elif name.endswith('.out.cif'):
+        name = name[:-8]
+    elif name.endswith('.tar'):
+        name = name[:-4]
+    elif name.endswith('.db'):
+        name = name[:-3]
+    elif name.endswith('.faplog'):
+        name = name[:-7]
+    elif name.endswith('.db.bak'):
+        name = name[:-7]
+    elif name.endswith('.csv'):
+        name = name[:-4]
+    return name
 
 def main():
     global LOOKUPDIR
