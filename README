@@ -42,7 +42,7 @@ To produce a dataset in analysis.py, the following commands can be used:
                   ***warning, setting this value may slow the code down
                      dramatically*** (optional)
 -N [integer]  -- this sets the total number of MOFs in the dataset. 
-                  setting -F over-rides this value. (default=100)
+                  setting -F over-rides this value. (default=120)
 -F [integer]  -- sets the maximum number of MOFs containing a functional
                   group. (default=20)
 
