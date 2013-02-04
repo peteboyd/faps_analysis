@@ -7,7 +7,8 @@ import subprocess
 from optparse import OptionParser
 import stat
 
-pwd = "/work/nrap682/pboyd" 
+#pwd = "/work/nrap682/pboyd"
+pwd = os.getcwd()
 WQEQ_DIR = "/home/pboyd/lib/WilmerQEq"
 faps_dir = "/home/pboyd/codes_in_development/faps"
 faps_tools = "/home/pboyd/codes_in_development/faps/tools"
@@ -137,7 +138,7 @@ class CommandLine(object):
                           help=".csv file containing all the MOF names for submission.")
         parser.add_option("-d", "--dir", action="store", type="string",
                           dest="lookup_dir", 
-                          default="/scratch/tdaff/FinalCif",
+                          default="/shared_scratch/pboyd/OUTCIF/FinalCif",
                           help="Directory containing all the .cif files to "+
                           "copy over to the submission directory")
         (local_options, local_args) = parser.parse_args()
