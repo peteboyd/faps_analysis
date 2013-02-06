@@ -107,7 +107,6 @@ print("Ranking of MOFs based on REPEAT uptake...")
 print("MOFname, REPEAt uptake, original order")
 for ord in ordering:
     print "%s,%f,%i"%(csv['MOFname'][ord], float(csv[rep_key][ord]), ord)
-sys.exit()
 for rankx in range(L / segment):
     # note, debug to make sure all this indexing is correct
     finish = start + segment + distrib
@@ -115,19 +114,29 @@ for rankx in range(L / segment):
     if (segment+distrib) > len(ordering[finish:]):
         finish += len(ordering[finish:])
 
-    order = ordering[start:finish-1]
-    percentile = (float(start)/float(L)*100, float(finish-1)/float(L)*100)
-    print("Evaluating the range %5.3f - %5.3f %%"%(percentile))
+    #order = ordering[start:finish-1]
+    order = ordering[0: finish-1]
+    #percentile = (float(start)/float(L)*100, float(finish-1)/float(L)*100)
+    percentile = (float(1)/float(L)*100, float(finish-1)/float(L)*100)
     keys = [i for i in csv.keys() if i is not rep_key]
     keys.pop(keys.index("MOFname"))
     for key in keys:
         name = strip_key(key)
         #print("Comparing REPEAT with %s"%(name))
-        outcsv = open("%s_corellations.csv"%(name), "a")
+        outcsv = open("%s_correlations.csv"%(name), "a")
         if rankx == 0:
             outcsv.writelines("%s,%s,%s\n"%("order","pearson","spearman"))
         rep_vals = [float(csv[rep_key][i]) for i in order]
         other_vals = [float(csv[key][i]) for i in order]
+        # remove zero entries
+        for ind, (rep, other) in enumerate(zip(rep_vals, other_vals)):
+            if rep == 0. or other == 0.:
+                rep_vals.pop(ind)
+                other_vals.pop(ind)
+        print("%s, %s"%(rep_key, key))
+        for rep_val, other_val in zip(rep_vals, other_vals):
+            print rep_val, other_val
+
         rho, pval = stats.spearmanr(other_vals, rep_vals)
         pears, pval2 = stats.pearsonr(other_vals, rep_vals)
         outcsv.writelines("%i,%f,%f\n"%(rankx, pears, rho))

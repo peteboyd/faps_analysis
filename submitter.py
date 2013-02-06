@@ -114,7 +114,7 @@ class CommandLine(object):
             print usage
             sys.exit(0)
         parser = OptionParser(usage=usage)
-        parser.add_option("-Z", "--report", action="store_true",
+        parser.add_option("-Z", "--zerochg", action="store_true",
                           dest="CHARGE_ZERO",
                           help="Create a series of submission directories " +
                           "containing mofs with zero charges.")
@@ -170,7 +170,7 @@ def zipper_fap_cif(basename):
 zipname="%s.zip"
 read -a dirs <<< `ls -d -- */`
 for dir in ${dirs[@]}; do
-    mof=${dir%'/'}
+    mof=${dir%%'/'}
     if [ -d ${mof}/faps_${mof}_repeat ]; then
         cp ${mof}/faps_${mof}_repeat/faps-${mof}.out ${mof}/${mof}_REPEAT.out
         cp ${mof}/faps_${mof}_vasp/CONTCAR ${mof}/${mof}_CONTCAR
@@ -195,9 +195,9 @@ def zipper_chg_set(basename):
 zipname="%s.zip"
 read -a dirs <<< `ls -d -- */`
 for dir in ${dirs[@]}; do
-    mof=${dir%'/'}
-    zip $zipname ${mof}/%{mof}.cif
-    zip $zipname ${mof}/%{mof}.fap
+    mof=${dir%%'/'}
+    zip $zipname ${mof}/${mof}.cif
+    zip $zipname ${mof}/${mof}.fap
 done
 """%(basename)
     file = open('zipper.sh', 'w')
@@ -357,9 +357,9 @@ def main():
     # create the zipper script
     if not any([cmd.options.CHARGE_EGULP_3, cmd.options.CHARGE_WILMER,
         cmd.options.CHARGE_ZERO, cmd.options.CHARGE_UFF]):
-        zipper_chg_set()
+        zipper_chg_set(submit_dir)
     else:
-        zipper_fap_cif()
+        zipper_fap_cif(submit_dir)
 
     for line in filestream:
         os.chdir("%s"%(submit_dir))
