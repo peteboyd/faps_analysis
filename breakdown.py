@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import scipy
 from scipy import stats
 from itertools import izip
 import math
@@ -115,7 +116,7 @@ for rankx in range(L / segment):
         finish += len(ordering[finish:])
 
     #order = ordering[start:finish-1]
-    order = ordering[0: finish-1]
+    order = ordering[0: finish]
     #percentile = (float(start)/float(L)*100, float(finish-1)/float(L)*100)
     percentile = (float(1)/float(L)*100, float(finish-1)/float(L)*100)
     keys = [i for i in csv.keys() if i is not rep_key]
@@ -125,22 +126,26 @@ for rankx in range(L / segment):
         #print("Comparing REPEAT with %s"%(name))
         outcsv = open("%s_correlations.csv"%(name), "a")
         if rankx == 0:
-            outcsv.writelines("%s,%s,%s\n"%("order","pearson","spearman"))
+            outcsv.writelines("%s,%s,%s,%s,%s\n"%("order", "pearson", "spearman", "rms", "rmsd"))
         rep_vals = [float(csv[rep_key][i]) for i in order]
         other_vals = [float(csv[key][i]) for i in order]
         # remove zero entries
-        for ind, (rep, other) in enumerate(zip(rep_vals, other_vals)):
+        for (rep, other) in zip(reversed(rep_vals), reversed(other_vals)):
             if rep == 0. or other == 0.:
-                rep_vals.pop(ind)
-                other_vals.pop(ind)
+                rep_vals.pop(rep_vals.index(rep))
+                other_vals.pop(other_vals.index(other))
         print("%s, %s"%(rep_key, key))
+        diff = []
         for rep_val, other_val in zip(rep_vals, other_vals):
+            diff.append(other_val - rep_val)
             print rep_val, other_val
-
+        rms = scipy.sqrt(scipy.mean([i*i for i in diff]))
+        rmsd = scipy.std(diff)
         rho, pval = stats.spearmanr(other_vals, rep_vals)
         pears, pval2 = stats.pearsonr(other_vals, rep_vals)
-        outcsv.writelines("%i,%f,%f\n"%(rankx, pears, rho))
+        outcsv.writelines("%i,%f,%f,%f,%f\n"%(rankx, pears, rho, rms, rmsd))
         outcsv.close()
         #print("Pearson: %7.5f"%pears)
         #print("Spearman: %7.5f"%rho)
     start = finish
+

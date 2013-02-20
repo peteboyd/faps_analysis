@@ -33,10 +33,13 @@ ATOM_NUM = [
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 WORKDIR = ""
 ORG_MAX = 10
-ORG_PAIR_MAX = ORG_MAX / 2
-DATA_MAX = 0
+ORG_PAIR_MAX = ORG_MAX / 5
 FNL_MAX = 20
-FNL_PAIR_MAX = FNL_MAX / 2
+FNL_PAIR_MAX = FNL_MAX / 5
+# following to be decided at run-time
+DATA_MAX = 0
+MET_MAX = 0
+TOP_MAX = 0
 
 class CSV(dict):
     """
@@ -212,7 +215,7 @@ class Selector(object):
         "Zr" : (7,),
         "In" : (8, 11),
         "V" : (9,),
-        "Ba" : (10,),
+        "Ba" : (11,),
         "Ni" : (12,)
         }
 
@@ -221,6 +224,7 @@ class Selector(object):
             28,
             9,
             15,
+            10,
             (2, 11),
             (20, 23),
             (24, 27),
@@ -250,9 +254,12 @@ class Selector(object):
             "SO3H"
             ]
 
-    def __init__(self, mof_dic, metals=None, weight=False, ignore='used_mofs'):
+    def __init__(self, mof_dic, metals=None, topologies=[],
+                 ignore='used_mofs'):
+        # THESE global variables are adjusted below.
+        global TOP_MAX
+        global MET_MAX
         self.mof_dic = mof_dic.copy()
-        self.weight = weight
         used_mofs = MOFlist(ignore)
         # remove mofs in the dictionary which have already been used
         for mof in used_mofs:
@@ -264,53 +271,62 @@ class Selector(object):
         self.metalind = []
         if metals is not None:
            for metal in metals:
+               # try to extract a metal index from the list of metals
                try:
-                   indices = self.metal_indices[metal]
-                   for ind in indices:
-                       self.metalind.append(ind)
-               except KeyError:
-                   print("ERROR: metal %s is not in the database!")
-                   sys.exit(1)
+                   metind = int(metal)
+                   if not metind in [ind for sublist in 
+                                        self.metal_indices.values()
+                                        for ind in sublist]:
+                       print("ERROR: metal index %i is not in the database!"
+                               %metind)
+                       sys.exit(1)
+               except ValueError:
+                   try:
+                       indices = self.metal_indices[metal]
+                       for ind in indices:
+                           self.metalind.append(ind)
+                   except KeyError:
+                       print("ERROR: metal %s is not in the database!"%(metal))
+                       sys.exit(1)
+        # all metals are fair game
         else:
            for metalind in self.metal_indices.values():
                for i in metalind:
                    self.metalind.append(i)
-        self.trim_metals()
+        # set upper bounds for the topologies and metal indices.
+        if topologies:
+            TOP_MAX = DATA_MAX / len(topologies) + 1
+        MET_MAX = DATA_MAX / len(self.metalind) + 1
+        self.topologies = topologies
+        top_bool = True if topologies else False
+        self.trim_undesired(_TOPOLOGY=top_bool)
 
-    def trim_metals(self):
+    def trim_undesired(self, _METAL=True, _ORGANIC=True, _TOPOLOGY=False):
         """Reduces the number of mofs in the mof_dic dictionary based
-        on requested metal indices.
+        on requested metal indices, topologies, and bad organic species
 
         """
         temp_moflist = self.mof_dic.keys()
-        # delete all metals not with the correct index
         for mof in temp_moflist:
-            # obtain the metal index
             met, org1, org2, top, fnl = parse_mof_data(mof)
-            ind = met()
-
-            if ind not in self.metalind:
-                self.mof_dic.pop(mof)
-
-    def trim_organics(self):
-        """Reduces the number of mofs in the mof_dic dictionary based
-        on bad organic building units.  These building units, or 
-        combinations of building units tend to break VASP.
-
-        """
-
-        temp_moflist = self.mof_dic.keys()
-        for mof in temp_moflist:
-            # obtain organic indices
-            met, org1, org2, top, fnl = parse_mof_data(mof)
-            o1 = org1()
-            o2 = org2()
-            orgpair = tuple(sorted([o1, o2]))
-            if (o1 in self.bad_organics):
-                self.mof_dic.pop(mof)
-            elif (o2 in self.bad_organics):
-                self.mof_dic.pop(mof)
-            elif (orgpair in self.bad_organics):
+            pop = False
+            if _METAL:
+                if met() not in self.metalind:
+                    pop = True
+            if _TOPOLOGY:
+                if top() not in self.topologies:
+                    pop = True
+            if _ORGANIC:
+                o1 = org1()
+                o2 = org2()
+                orgpair = tuple(sorted([o1, o2]))
+                if (o1 in self.bad_organics):
+                    pop = True
+                elif (o2 in self.bad_organics):
+                    pop = True
+                elif (orgpair in self.bad_organics):
+                    pop = True
+            if pop:
                 self.mof_dic.pop(mof)
 
     def trim_non_existing(self):
@@ -388,8 +404,9 @@ class Selector(object):
                 plist.append(mof)
         return plist
 
-    def random_select(self, exclude=[], inclusive=[], partial=[], gridmax=None):
-        """Select a list of MOFs randomly based on low uptake.
+    def random_select(self, exclude=[], inclusive=[], partial=[],
+                      weight=None, gridmax=None):
+        """Select a list of MOFs randomly 
         'exclude' defines functional groups which will not be represented
 
         'inclusive' defines functional groups which will be represented as the
@@ -399,8 +416,22 @@ class Selector(object):
             functional groups excluding those in 'exclude'
 
         """
+        print("Performing random selection.. values used:\n" + 
+              "inclusive functional groups: ", inclusive, "\n" +
+              "exclude functional groups: ", exclude, "\n" + 
+              "partial functional groups: ", partial, "\n" +
+              "weight uptake (gaussian): %s\n"%(weight) + 
+              "max grid points: ",gridmax, "\n" +
+              "Total number of MOFs: %i\n"%DATA_MAX +
+              "Maximum per functional group: %i\n"%FNL_MAX +
+              "Maximum per functional group pair: %i\n"%FNL_PAIR_MAX + 
+              "Maximum per organic linker: %i\n"%ORG_MAX + 
+              "Maximum per organic linker pair: %i\n"%ORG_PAIR_MAX + 
+              "Maximum per metal index: %i\n"%MET_MAX + 
+              "Maximum per topology: %i\n"%TOP_MAX)
         dataset = {}
         organics_count, fnl_groups_count = {}, {}
+        top_count, met_index_count = {}, {}
         mofcount = 0
         if inclusive and partial:
             # check if any co-exist in these lists
@@ -444,8 +475,14 @@ class Selector(object):
             fnl_max = self.check_dictionary_counts(fnl_groups_count, 
                                                    fnl_group1=fnl_grp1, 
                                                    fnl_group2=fnl_grp2)
-            upt_wght = self.check_uptake_weight(uptake)
-
+            top_max = self.check_dictionary_counts(top_count,
+                                                   topology=top())
+            met_max = self.check_dictionary_counts(met_ind_count,
+                                                   metal=met())
+            if weight is not None:
+                upt_wght = self.weight_by_gaussian(uptake)
+            else:
+                upt_wght = True
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
                          gridmax is not None else True))
@@ -455,9 +492,16 @@ class Selector(object):
                 self.increment_dictionary_counts(organics_count,
                                                  org1(), 
                                                  org2())
+                # keep track of functional group counts
                 self.increment_dictionary_counts(fnl_groups_count,
                                                  fnl_grp1,
                                                  fnl_grp2)
+                # keep track of metal index counts
+                self.increment_dictionary_counts(met_index_count,
+                                                 met())
+                # keep track of topology counts
+                self.increment_dictionary_counts(top_count,
+                                                 top())
                 # append to list
                 dataset.setdefault(tuple((fnl_grp1, fnl_grp2)), []).append(mof)
                 self.mof_dic[mof]['ngrid'] = ngrid
@@ -475,9 +519,20 @@ class Selector(object):
         elif 'organic1' in kwargs.keys():
             maximum = ORG_MAX
             combine_max = ORG_PAIR_MAX
+        elif 'metal' in kwargs.keys():
+            maximum = MET_MAX
+            combine_max = MET_MAX
+        elif 'topology' in kwargs.keys():
+            maximum = TOP_MAX
+            combine_max = TOP_MAX
+        # check the combination of arguments
+        # only currently valid for organic and functional group dictionaries.
         combine = tuple(sorted(kwargs.keys()))
-        if combine >= combine_max:
-            return False
+        if len(combine) > 1:
+            dictionary.setdefault(combine, 0)
+            if dictionary[combine] >= combine_max:
+                return False
+        # check the individual value counts
         for key, value in kwargs:
             dictionary.setdefault(value, 0)
             if dictionary[value] >= maximum:
@@ -485,16 +540,25 @@ class Selector(object):
         return True
 
     def increment_dictionary_counts(self, dictionary, *args):
+        # increment individual entries.
         for arg in args:
             dictionary.setdefault(arg, 0)
             dictionary[arg] += 1
+        # increment combinations as well...
+        if len(set(args)) > 1:
+            dictionary.setdefault(tuple(args), 0)
+            dictionary[tuple(args)] += 1
 
-    def check_uptake_weight(self, uptake):
-        if self.weight:
-            if exp(-uptake/4.) < random.random():
-                return False
+    def weight_by_gaussian(self, uptake, a=1, b=5, c=1.5):
+        """Weight according to a gaussian distribution based on uptake.
+        Defaults are a distribution amplitude of 1, centered around
+        5 mmol/g, smeared by 1.5 (width)"""
+        gauss = gaussian(a, b, c)
+        # probability of accepting the gaussian weight determined
+        # by a random number between 0 and a.
+        if gauss(uptake) < (random.random()*a):
+            return False
         return True
-
 
     def grid_points(self, mofname, gridmax):
         """Determine the maximum number of grid points needed for the esp."""
@@ -766,7 +830,13 @@ class CommandLine(object):
                           action="callback", 
                           callback=self.parse_commas, default=[],
                           help="specify metals to generate dataset. Current" +
-                          " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni") 
+                          " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni" + 
+                          " or you can enter the associated indices") 
+        parser.add_option("-T", "--topologies", dest="topologies", type="string",
+                          action="callback", 
+                          callback=self.parse_commas, default=[],
+                          help="specify topologies to include in the dataset." +
+                          " delimited by commas") 
         parser.add_option("-G", "--gridpoints", action="store", type="int",
                           dest="maxgridpts",
                           help="specify the max number of grid points to "+\
@@ -995,7 +1065,8 @@ def pair_csv_fnl(mof, fnl):
 def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
                      inclusive=[], exclude=[], partial=[],
                      gridmax=None,
-                     ignore=None):
+                     ignore=None,
+                     topologies=[]):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
@@ -1003,11 +1074,10 @@ def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
     mofs = CSV(csvfile)
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
-    sel = Selector(mofs, metals=metals, ignore=ignore)
-    sel.trim_organics()
+    sel = Selector(mofs, metals=metals, ignore=ignore, topologies=topologies)
     sel.trim_non_existing()
     sel.random_select(exclude=exclude, inclusive=inclusive, partial=partial, 
-                      gridmax=gridmax)
+                      gridmax=gridmax, weight=None)
 
 def write_report(directory=None, sqlfile=None, csvfile=None):
     """Write a report on some new uptake data located in 'directory' based
@@ -1036,7 +1106,6 @@ def generate_top_structures(csvfile=None, sqlfile=None,
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
     sel = Selector(mofs, metals=metals, ignore=ignore)
-    sel.trim_organics()
     sel.trim_non_existing()
     sel.top_select(exclude=exclude, inclusive=inclusive, 
                    partial=partial, gridmax=gridmax)
@@ -1346,6 +1415,11 @@ def clean(name):
         name = name[:-4]
     return name
 
+def gaussian(a, b, c):
+    def g(x):
+        return a*exp(-(x - b)**2/(2*c**2))
+    return g
+
 def main():
     global LOOKUPDIR
     global WORKDIR
@@ -1356,7 +1430,6 @@ def main():
     WORKDIR = os.getcwd()
     DATA_MAX = cmd.options.nummofs
     FNL_MAX = cmd.options.fnlmax
-
     if cmd.options.dataset:
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)
@@ -1384,7 +1457,8 @@ def main():
                          exclude=cmd.options.exclude,
                          partial=cmd.options.partial,
                          gridmax=cmd.options.maxgridpts,
-                         ignore=cmd.options.ignorefile)
+                         ignore=cmd.options.ignorefile,
+                         topologies=cmd.options.topologies)
                          
     if cmd.options.report:
         if cmd.options.dirname:
