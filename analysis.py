@@ -469,7 +469,6 @@ class Selector(object):
                 # doesn't find the key [mof] or ['functional_groups'] in their
                 # associated dictionaries
                 fnl_grp1, fnl_grp2 = None, None
-
             org_max = self.check_dictionary_counts(organics_count,
                                                 organic1=org1(),
                                                 organic2=org2())
@@ -487,14 +486,6 @@ class Selector(object):
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
                          gridmax is not None else True))
-            if not ngrid_test:
-                print "ngrid"
-            if org_max:
-                print "org_max"
-            if fnl_max:
-                print "fnl_max"
-            if not upt_wght:
-                print "upt_wght"
             if ngrid_test and not org_max and not fnl_max and not top_max and \
                     not met_max and upt_wght:
                 # increment counts 
@@ -536,10 +527,14 @@ class Selector(object):
             combine_max = TOP_MAX
         # check the combination of arguments
         # only currently valid for organic and functional group dictionaries.
-        combine = tuple(sorted(kwargs.keys()))
+        combine = sorted(kwargs.keys())
+        try:
+            combine.pop(combine.index(None))
+        except ValueError:
+            pass
         if len(combine) > 1:
-            dictionary.setdefault(combine, 0)
-            if dictionary[combine] >= combine_max:
+            dictionary.setdefault(tuple(combine), 0)
+            if dictionary[tuple(combine)] >= combine_max:
                 return True 
         # check the individual value counts
         for key, value in kwargs.items():
@@ -551,10 +546,11 @@ class Selector(object):
     def increment_dictionary_counts(self, dictionary, *args):
         # increment individual entries.
         for arg in args:
-            dictionary.setdefault(arg, 0)
-            dictionary[arg] += 1
+            if arg is not None:
+                dictionary.setdefault(arg, 0)
+                dictionary[arg] += 1
         # increment combinations as well...
-        if len(set(args)) > 1:
+        if len(set(args)) > 1 and None not in args:
             dictionary.setdefault(tuple(args), 0)
             dictionary[tuple(args)] += 1
 
