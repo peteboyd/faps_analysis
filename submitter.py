@@ -337,7 +337,7 @@ def gen_submit_dir(cmd, local_dir, basefile):
 
     else:
         try:
-            os.makedirs("%s/%s"%(submit_dir, basefile))
+            os.makedirs("%s/%s"%(local_dir, basefile))
         except OSError:
             print("Directory already exists!")
         submit_dir = "%s/%s"%(local_dir, basefile)
