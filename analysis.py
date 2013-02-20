@@ -280,6 +280,7 @@ class Selector(object):
                        print("ERROR: metal index %i is not in the database!"
                                %metind)
                        sys.exit(1)
+                   self.metalind.append(metind)
                except ValueError:
                    try:
                        indices = self.metal_indices[metal]
@@ -420,7 +421,7 @@ class Selector(object):
               "inclusive functional groups: ", inclusive, "\n" +
               "exclude functional groups: ", exclude, "\n" + 
               "partial functional groups: ", partial, "\n" +
-              "weight uptake (gaussian): %s\n"%(weight) + 
+              "weight uptake (gaussian): %s\n"%weight + 
               "max grid points: ",gridmax, "\n" +
               "Total number of MOFs: %i\n"%DATA_MAX +
               "Maximum per functional group: %i\n"%FNL_MAX +
@@ -477,7 +478,7 @@ class Selector(object):
                                                    fnl_group2=fnl_grp2)
             top_max = self.check_dictionary_counts(top_count,
                                                    topology=top())
-            met_max = self.check_dictionary_counts(met_ind_count,
+            met_max = self.check_dictionary_counts(met_index_count,
                                                    metal=met())
             if weight is not None:
                 upt_wght = self.weight_by_gaussian(uptake)
@@ -486,8 +487,16 @@ class Selector(object):
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
                          gridmax is not None else True))
-            if ngrid_test and not org_max and not fnl_max \
-                    and upt_wght:
+            if not ngrid_test:
+                print "ngrid"
+            if org_max:
+                print "org_max"
+            if fnl_max:
+                print "fnl_max"
+            if not upt_wght:
+                print "upt_wght"
+            if ngrid_test and not org_max and not fnl_max and not top_max and \
+                    not met_max and upt_wght:
                 # increment counts 
                 self.increment_dictionary_counts(organics_count,
                                                  org1(), 
@@ -531,13 +540,13 @@ class Selector(object):
         if len(combine) > 1:
             dictionary.setdefault(combine, 0)
             if dictionary[combine] >= combine_max:
-                return False
+                return True 
         # check the individual value counts
-        for key, value in kwargs:
+        for key, value in kwargs.items():
             dictionary.setdefault(value, 0)
             if dictionary[value] >= maximum:
-                return False
-        return True
+                return True 
+        return False
 
     def increment_dictionary_counts(self, dictionary, *args):
         # increment individual entries.
@@ -590,6 +599,9 @@ class Selector(object):
             for metal in set(metal_titles):
                 basename += "%s_"%metal
         basename += "dataset"
+        if self.topologies:
+            for top in self.topologies:
+                basename += "_%s"%top
         count = 0
         filename = create_csv_filename(basename) 
         print("Writing dataset to %s.csv..."%(filename))
