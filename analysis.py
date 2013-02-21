@@ -861,6 +861,10 @@ class CommandLine(object):
                           callback=self.parse_commas,
                           help="comma (,) delimited list of csv files to " + \
                           "merge into a larger file.")
+        parser.add_option("-W", "--weight",
+                          action="store_true",
+                          help="Make the random selected data a gaussian " + \
+                            "weight on the CO2 uptake.")
 
         (local_options, local_args) = parser.parse_args()
         self.options = local_options
@@ -1074,7 +1078,8 @@ def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
                      inclusive=[], exclude=[], partial=[],
                      gridmax=None,
                      ignore=None,
-                     topologies=[]):
+                     topologies=[],
+                     weight=None):
     """Create a dataset with pre-defined number of MOFs. Change in code
     if needed.
 
@@ -1085,7 +1090,7 @@ def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
     sel = Selector(mofs, metals=metals, ignore=ignore, topologies=topologies)
     sel.trim_non_existing()
     sel.random_select(exclude=exclude, inclusive=inclusive, partial=partial, 
-                      gridmax=gridmax, weight=None)
+                      gridmax=gridmax, weight=weight)
 
 def write_report(directory=None, sqlfile=None, csvfile=None):
     """Write a report on some new uptake data located in 'directory' based
@@ -1466,7 +1471,8 @@ def main():
                          partial=cmd.options.partial,
                          gridmax=cmd.options.maxgridpts,
                          ignore=cmd.options.ignorefile,
-                         topologies=cmd.options.topologies)
+                         topologies=cmd.options.topologies,
+                         weight=cmd.options.weight)
                          
     if cmd.options.report:
         if cmd.options.dirname:
