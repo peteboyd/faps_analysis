@@ -164,7 +164,7 @@ done"""
     file.close()
     os.chmod('faps_sub.sh', stat.S_IRWXU)
 
-def zipper_fap_cif(basename):
+def zipper_chg_set(basename):
     line = \
 """!/bin/bash
 zipname="%s.zip"
@@ -189,7 +189,7 @@ done
     file.close()
     os.chmod('zipper.sh', stat.S_IRWXU)
 
-def zipper_chg_set(basename):
+def zipper_fap_cif(basename):
     line = \
 """!/bin/bash
 zipname="%s.zip"

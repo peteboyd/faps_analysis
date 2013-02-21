@@ -32,8 +32,8 @@ ATOM_NUM = [
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
 LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
 WORKDIR = ""
-ORG_MAX = 10
-ORG_PAIR_MAX = ORG_MAX / 5
+ORG_MAX = 10 
+ORG_PAIR_MAX = ORG_MAX / 2
 FNL_MAX = 20
 FNL_PAIR_MAX = FNL_MAX / 5
 # following to be decided at run-time
@@ -189,10 +189,12 @@ class MOFlist(list):
 
     def __init__(self, filename):
         filestream = open(filename, "r")
+        header = filestream.readline()
+        mofind = header.split(',').index("MOFname")
         for line in filestream:
             line = line.strip()
-            line = line.split()
-            line = line[0]
+            line = line.split(",")
+            line = line[mofind]
             if "sym" in line:
                 line.lstrip("#")
                 line = clean(line)
@@ -417,7 +419,7 @@ class Selector(object):
             functional groups excluding those in 'exclude'
 
         """
-        print("Performing random selection.. values used:\n" + 
+        print ("Performing random selection.. values used:\n" + 
               "inclusive functional groups: ", inclusive, "\n" +
               "exclude functional groups: ", exclude, "\n" + 
               "partial functional groups: ", partial, "\n" +
@@ -486,6 +488,14 @@ class Selector(object):
             ngrid = self.grid_points(mof, gridmax)
             ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
                          gridmax is not None else True))
+            # check to see if only the weighted uptake failed.
+            # If so, put the mof back in the pool for selection later..
+            # I did this because the lists are not completing.
+            if not upt_wght and not org_max and not fnl_max and not top_max \
+                    and not met_max and ngrid_test:
+                # put the mof back in the random selection pool.
+                moflist.append(mof)
+
             if ngrid_test and not org_max and not fnl_max and not top_max and \
                     not met_max and upt_wght:
                 # increment counts 
@@ -554,7 +564,7 @@ class Selector(object):
             dictionary.setdefault(tuple(args), 0)
             dictionary[tuple(args)] += 1
 
-    def weight_by_gaussian(self, uptake, a=1, b=5, c=1.5):
+    def weight_by_gaussian(self, uptake, a=1, b=5, c=1.3):
         """Weight according to a gaussian distribution based on uptake.
         Defaults are a distribution amplitude of 1, centered around
         5 mmol/g, smeared by 1.5 (width)"""
