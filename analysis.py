@@ -13,6 +13,8 @@ from math import cos, sin, sqrt, pi, exp
 import numpy as np
 from scipy import stats
 from optparse import OptionParser
+import ConfigParser
+from StringIO import StringIO
 import subprocess
 import zipfile
 import uuid
@@ -418,8 +420,6 @@ class Selector(object):
             TOP_MAX = DATA_MAX / len(topologies) + 1
         MET_MAX = DATA_MAX / len(self.metalind) + 1
 
-        if oinclude:
-
 
     def random_select(self, exclude=[], inclusive=[], partial=[],
                       weight=None, gridmax=None):
@@ -661,7 +661,7 @@ class Selector(object):
 
     def gen_moflist(self, inclusive, partial, exclude):
         """Returns a list of MOFs which are chosen based on the 
-        disrimination input lists.
+        discrimination input lists.
 
         """
         moflist = []
@@ -703,9 +703,6 @@ class GrabNewData(object):
         self.extended = extended
         # base directory containing all the faps job info.
         self.basedir = basedir
-        # flag mofs with no data to not be computed in the correlations
-        self.bad_data = []
-
     def grab_data(self, temp=298.0, press=0.15):
         """Descends into directories and grabs appropriate data."""
         os.chdir(self.basedir)
@@ -722,14 +719,11 @@ class GrabNewData(object):
                 else:
                     print "ERROR: could not find %s-CO2.csv"%(mof)
                     new_uptake = 0.
-                    self.bad_data.append(mof)
                 os.chdir('..')
             else:
                 print "ERROR: could not find %s in the directory %s"%(
                         mof, self.basedir)
                 new_uptake = 0. 
-                self.bad_data.append(mof)
-
             self.mofs[mof]['new_uptake'] = new_uptake
         os.chdir(WORKDIR)
 
@@ -750,14 +744,9 @@ class GrabNewData(object):
                     "Functional_grp2\n"
 
         outstream.writelines(header)
-        # csvupt and newupt will be used to calculate correlation coefficients
-        csvupt, newupt = [], []
         for mof in self.mofs.keys():
             csv_uptake = self.mofs[mof]['mmol/g']
             new_uptake = self.mofs[mof]['new_uptake']
-            if mof not in self.bad_data:
-                csvupt.append(csv_uptake)
-                newupt.append(new_uptake)
             try:
                 replaced_groups = self.mofs[mof]['functional_groups']
             except KeyError:
@@ -785,12 +774,37 @@ class GrabNewData(object):
                 line = fmt%(mof, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
-        rho, pval = stats.spearmanr(csvupt, newupt)
-        print("Spearman rank: %7.5f"%rho)
-        pears, p2 = stats.pearsonr(csvupt, newupt)
-        print("Pearson correlation: %7.5f"%pears)
         print("Done.")
         outstream.close()
+
+class Options(object):
+    """Read in the options from the config file."""
+    def __init__(self, name=None):
+        self.job = ConfigParser.SafeConfigParser()
+        self.defaults = ConfigParser.SafeConfigParser()
+        self._set_paths()
+        
+    def _set_paths(self):
+        if __name__ != '__main__':
+            self.script_dir = os.path.dirname(__file__)
+        else:
+            self.script_dir = os.path.abspath(sys.path[0])
+        self.job_dir = os.getcwd()
+
+    def load_defaults(self):
+        default_path = os.path.join(self.script_dir, 'defaults.ini')
+        print default_path
+        try:
+            filetemp = open(default_path, 'r')
+            default = filetemp.read()
+            filetemp.close()
+            if not '[defaults]' in default.lower():
+                default = '[defaults]\n' + default
+            default = StringIO(default)
+        except IOError:
+            print("Error loading defaults.ini")
+            default = StringIO('[defaults]\n')
+        self.defaults.readfp(default)
 
 class CommandLine(object):
     """Parse command line options and communicate directives to the program."""
@@ -1462,6 +1476,10 @@ def main():
     global WORKDIR
     global DATA_MAX
     global FNL_MAX
+    options = Options()
+    options.load_defaults()
+    print options.defaults.options('defaults')
+    sys.exit()
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
     WORKDIR = os.getcwd()
