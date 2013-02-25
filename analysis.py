@@ -296,6 +296,10 @@ class Selector(object):
            for metalind in self.metal_indices.values():
                for i in metalind:
                    self.metalind.append(i)
+        # set upper bounds for the topologies and metal indices
+        if topologies:
+            TOP_MAX = DATA_MAX / len(topologies) + 1
+        MET_MAX = DATA_MAX / len(self.metalind) + 1
         self.topologies = topologies
         top_bool = True if topologies else False
         self.trim_undesired(_TOPOLOGY=top_bool)
