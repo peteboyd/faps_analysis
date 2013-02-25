@@ -1478,8 +1478,6 @@ def main():
     global FNL_MAX
     options = Options()
     options.load_defaults()
-    print options.defaults.options('defaults')
-    sys.exit()
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
     WORKDIR = os.getcwd()
