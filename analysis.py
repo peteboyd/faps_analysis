@@ -222,8 +222,6 @@ class Selector(object):
         }
 
     bad_organics = [
-            29,
-            28,
             9,
             15,
             10,
@@ -296,15 +294,11 @@ class Selector(object):
            for metalind in self.metal_indices.values():
                for i in metalind:
                    self.metalind.append(i)
-        # set upper bounds for the topologies and metal indices.
-        if topologies:
-            TOP_MAX = DATA_MAX / len(topologies) + 1
-        MET_MAX = DATA_MAX / len(self.metalind) + 1
         self.topologies = topologies
         top_bool = True if topologies else False
         self.trim_undesired(_TOPOLOGY=top_bool)
 
-    def trim_undesired(self, _METAL=True, _ORGANIC=True, _TOPOLOGY=False):
+    def trim_undesired(self, _METAL=True, _ORGANIC=True, _TOPOLOGY=True):
         """Reduces the number of mofs in the mof_dic dictionary based
         on requested metal indices, topologies, and bad organic species
 
@@ -407,6 +401,26 @@ class Selector(object):
                 plist.append(mof)
         return plist
 
+    def set_maxima(self, exclude, inclusive, partial, oexclude, oinclude,
+                   topologies):
+        """Set maximum values for the global variables based on the
+        values set by the arrays.
+
+        """
+        global ORG_MAX
+        global ORG_PAIR_MAX
+        global FNL_MAX
+        global FNL_PAIR_MAX
+        global MET_MAX
+        global TOP_MAX
+        # set upper bounds for the topologies and metal indices.
+        if topologies:
+            TOP_MAX = DATA_MAX / len(topologies) + 1
+        MET_MAX = DATA_MAX / len(self.metalind) + 1
+
+        if oinclude:
+
+
     def random_select(self, exclude=[], inclusive=[], partial=[],
                       weight=None, gridmax=None):
         """Select a list of MOFs randomly 
@@ -419,19 +433,20 @@ class Selector(object):
             functional groups excluding those in 'exclude'
 
         """
-        print ("Performing random selection.. values used:\n" + 
-              "inclusive functional groups: ", inclusive, "\n" +
-              "exclude functional groups: ", exclude, "\n" + 
-              "partial functional groups: ", partial, "\n" +
-              "weight uptake (gaussian): %s\n"%weight + 
-              "max grid points: ",gridmax, "\n" +
-              "Total number of MOFs: %i\n"%DATA_MAX +
-              "Maximum per functional group: %i\n"%FNL_MAX +
-              "Maximum per functional group pair: %i\n"%FNL_PAIR_MAX + 
-              "Maximum per organic linker: %i\n"%ORG_MAX + 
-              "Maximum per organic linker pair: %i\n"%ORG_PAIR_MAX + 
-              "Maximum per metal index: %i\n"%MET_MAX + 
-              "Maximum per topology: %i\n"%TOP_MAX)
+        print "Performing random selection.. values used:\n" + \
+              "inclusive functional groups: ", inclusive, "\n" + \
+              "exclude functional groups: ", exclude, "\n" + \
+              "partial functional groups: ", partial, "\n" + \
+              "weight uptake (gaussian): %s\n"%weight + \
+              "max grid points: ",gridmax, "\n" + \
+              "Total number of MOFs: %i\n"%DATA_MAX + \
+              "Maximum per functional group: %i\n"%FNL_MAX + \
+              "Maximum per functional group pair: %i\n"%FNL_PAIR_MAX + \
+              "Maximum per organic linker: %i\n"%ORG_MAX + \
+              "Maximum per organic linker pair: %i\n"%ORG_PAIR_MAX + \
+              "Maximum per metal index: %i\n"%MET_MAX + \
+              "Maximum per topology: %i\n"%TOP_MAX + \
+              "Gridmax is set to ", gridmax
         dataset = {}
         organics_count, fnl_groups_count = {}, {}
         top_count, met_index_count = {}, {}
@@ -443,8 +458,8 @@ class Selector(object):
             if pair:
                 for i in pair:
                     group = i[0]
-                    print("Warning duplicate %s found in inclusive"%(group) + 
-                          " partial lists. Appending to inclusive only...")
+                    print "Warning duplicate %s found in inclusive"%(group) + \
+                          " partial lists. Appending to inclusive only..."
                     partial.pop(partial.index(group))
         # generate a list of valid mofs which obey the inclusive, partial and 
         # exclude lists.
@@ -456,8 +471,8 @@ class Selector(object):
                 moflist.pop(moflist.index(mof))
 
             except IndexError:
-                print("Sampled all MOFs without completing list! Writing "
-                    + "output file anyways..")
+                print "Sampled all MOFs without completing list! Writing " + \
+                      "output file anyways.."
                 self.write_dataset(dataset, gridmax)
                 return
             met, org1, org2, top, fnl = parse_mof_data(mof)
@@ -611,7 +626,6 @@ class Selector(object):
         count = 0
         filename = create_csv_filename(basename) 
         print("Writing dataset to %s.csv..."%(filename))
-        print("Gridmax is set to ", gridmax)
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
         if gridmax is not None:
