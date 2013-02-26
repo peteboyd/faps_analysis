@@ -31,16 +31,6 @@ ATOM_NUM = [
     "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U", "Np", "Pu", "Am", "Cm", "Bk",
     "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs", "Mt",
     "Ds", "Rg", "Cn", "Uut", "Uuq", "Uup", "Uuh", "Uuo"]
-LOOKUPDIR = "/shared_scratch/pboyd/OUTCIF/FinalCif"
-WORKDIR = ""
-ORG_MAX = 10 
-ORG_PAIR_MAX = ORG_MAX / 2
-FNL_MAX = 20
-FNL_PAIR_MAX = FNL_MAX / 5
-# following to be decided at run-time
-DATA_MAX = 0
-MET_MAX = 0
-TOP_MAX = 0
 
 class CSV(dict):
     """
@@ -51,6 +41,9 @@ class CSV(dict):
         self._columns = {"MOF":"MOFname", "uptake":"mmol/g",
                       "temperature":"T/K", "pressure":"p/bar"}
         self.filename = filename
+        if not os.path.exists(filename):
+            error("Could not find the file: %s"%filename)
+            sys.exit(1)
         head_read = open(filename, "r")
         self.headings = head_read.readline().lstrip("#").split(",")
         head_read.close()
@@ -74,7 +67,7 @@ class CSV(dict):
             except KeyError:
                 rightkey = key
             if rightkey not in self.headings:
-                print("Could not find the column %s in the csv file %s "%
+                warning("Could not find the column %s in the csv file %s "%
                         (rightkey, self.filename) + "returning...")
                 return 0. if _TYPE is "float" else None
             else:
@@ -92,7 +85,7 @@ class CSV(dict):
                 col = entry[colind]
                 return float(col) if _TYPE is "float" else col
 
-        print("Didn't find the data point requested in the csv file %s"%
+        warning("Didn't find the data point requested in the csv file %s"%
                 self.filename)
         return 0. if _TYPE is "float" else None
 
@@ -121,7 +114,7 @@ class CSV(dict):
         try:
             mofind = self.headings.index(self._columns["MOF"])
         except ValueError:
-            print("ERROR: the csv file %s does not have %s as a column! "%
+            error("the csv file %s does not have %s as a column! "%
                     (self.filename, self._columns["MOF"]) + 
                     "EXITING ...")
             sys.exit(0)
@@ -129,7 +122,7 @@ class CSV(dict):
         try:
             uptind = self.headings.index(self._columns["uptake"])
         except ValueError:
-            print("WARNING: the csv file %s does not have %s as a column"%
+            warning("the csv file %s does not have %s as a column"%
                     (self.filename, self._columns["uptake"]) +
                     " the uptake will be reported as 0.0 mmol/g")
         burn = filestream.readline()
@@ -154,6 +147,9 @@ class FunctionalGroups(dict):
 
     def __init__(self, filename):
         """Read in all the mofs and store in the dictionary."""
+        if not os.path.exists(filename):
+            error("could not find the file: %s"%(filename))
+            sys.exit(1)
         filestream = open(filename, 'r')
         for line in filestream:
             line = line.split("|")
@@ -166,15 +162,18 @@ class FunctionalGroups(dict):
                         for i in groups.split(".")]
                 if len(dic.keys()) == 1:
                     dic[None] = []
+                elif len(dic.keys()) == 0:
+                    dic[None] = []
+                    dic[False] = []
             # check if the entry already exists!
             if self._check_duplicate(mof):
                 if self[mof] == dic:
                     pass
                     # duplicate
-                    #print "Duplicate found %s"%(mof)
+                    debug("Duplicate found %s"%(mof))
                 else:
-                    print "Warning: duplicate found for %s"%(mof) + \
-                            " but with different functionalization!"
+                    warning("duplicate found for %s"%(mof) +
+                            " but with different functionalization!")
             else:
                 self[mof] = dic
         filestream.close()
@@ -255,30 +254,45 @@ class Selector(object):
             "SO3H"
             ]
 
-    def __init__(self, mof_dic, metals=None, topologies=[],
-                 ignore='used_mofs'):
-        # THESE global variables are adjusted below.
-        global TOP_MAX
-        global MET_MAX
+    def __init__(self, options, mof_dic):
+        info("Inclusive functional groups: %s"%(', '.join(options.fnl_include))
+        info("Exclude functional groups: %s"%(', '.join(options.fnl_exclude))
+        info("Partial functional groups: %s"%(', '.join(options.fnl_partial))
+        info("Weight uptake (gaussian): %s"%options.gaussian)
+        info("Max grid points: %i"%options.max_gridpoints)
+        info("Total number of MOFs: %i"%options.total_mofs)
+        info("Maximum per functional group: %i"%options.functional_max)
+        info("Maximum per organic linker: %i"%options.organic_max)
+        info("Maximum per metal index: %i"%options.metal_max)
+        info("Maximum per topology: %i"%options.topology_max)
+        self.options = options
         self.mof_dic = mof_dic.copy()
-        used_mofs = MOFlist(ignore)
+        used_mofs = MOFlist(self.options.ignore_list)
         # remove mofs in the dictionary which have already been used
         for mof in used_mofs:
             try:
                 self.mof_dic.pop(mof)
             except KeyError:
                 pass
+        self._assign_metalind()
+        self._assign_maxima()
+        if self.options.max_gridpoints == 0:
+            self.options.max_gridpoints = None
+        top_bool = True if self.options.topologies else False
+        self.trim_undesired(_TOPOLOGY=top_bool)
+
+    def _assign_metalind(self):
         # assert if a metal is selected
         self.metalind = []
-        if metals is not None:
-           for metal in metals:
+        if self.options.metals:
+           for metal in self.options.metals:
                # try to extract a metal index from the list of metals
                try:
                    metind = int(metal)
                    if not metind in [ind for sublist in 
                                         self.metal_indices.values()
                                         for ind in sublist]:
-                       print("ERROR: metal index %i is not in the database!"
+                       error("ERROR: metal index %i is not in the database!"
                                %metind)
                        sys.exit(1)
                    self.metalind.append(metind)
@@ -288,22 +302,34 @@ class Selector(object):
                        for ind in indices:
                            self.metalind.append(ind)
                    except KeyError:
-                       print("ERROR: metal %s is not in the database!"%(metal))
+                       error("ERROR: metal %s is not in the database!"%(metal))
                        sys.exit(1)
         # all metals are fair game
         else:
            for metalind in self.metal_indices.values():
                for i in metalind:
                    self.metalind.append(i)
-        # set upper bounds for the topologies and metal indices
-        if topologies:
-            TOP_MAX = DATA_MAX / len(topologies) + 1
-        else:
-            TOP_MAX = DATA_MAX
-        MET_MAX = DATA_MAX / len(self.metalind) + 1
-        self.topologies = topologies
-        top_bool = True if topologies else False
-        self.trim_undesired(_TOPOLOGY=top_bool)
+
+    def _assign_maxima(self):
+        # topologies
+        if self.options.topology_max == 0 and len(self.options.topologies) != 0:
+            self.options.topology_max = (self.options.total_mofs /
+                                         len(self.options.topologies))
+        # metal
+        if self.options.metal_max == 0 and len(self.metalind) != 0:
+            self.options.metal_max = (self.options.total_mofs /
+                                      len(self.metalind))
+        # organic
+        if self.options.organic_max == 0 and len(self.options.org_include) != 0:
+            self.options.organic_max = (self.options.total_mofs /
+                                        len(self.options.org_include))
+        elif self.options.organic_max == 0:
+            self.options.organic_max = self.options.total_mofs / 30
+
+        # functional
+        if self.options.functional_max == 0:
+            self.options.functional_max = (self.options.total_mofs / 20)
+
 
     def trim_undesired(self, _METAL=True, _ORGANIC=True, _TOPOLOGY=True):
         """Reduces the number of mofs in the mof_dic dictionary based
@@ -318,7 +344,7 @@ class Selector(object):
                 if met() not in self.metalind:
                     pop = True
             if _TOPOLOGY:
-                if top() not in self.topologies:
+                if top() not in self.options.topologies:
                     pop = True
             if _ORGANIC:
                 o1 = org1()
@@ -339,8 +365,8 @@ class Selector(object):
         the mof is deleted from the dictionary.
 
         """
-        dir = LOOKUPDIR
-        print "Checking %s for all mofs..."%(dir)
+        dir = self.options.lookup 
+        info("Checking %s for all mofs..."%(dir))
         temp_moflist = self.mof_dic.keys()
         for mof in temp_moflist:
             # re-name mof to the out directory standards.
@@ -350,41 +376,43 @@ class Selector(object):
                     str(fnl()) + ".out.cif"
             if not os.path.isfile(dir + "/" + newmofname):
                 self.mof_dic.pop(mof)
-                #print "%s  does not exist!"%(mof)
+                #warning("%s  does not exist!"%(mof))
 
-    def top_select(self, exclude=[], inclusive=[], partial=[], gridmax=None):
+    def top_select(self):
         """Order the mofs by top ranked structures.  store in a dataset
         dictionary and write to a csv file.
 
         """
         dataset = {}
-        moflist = self.gen_moflist(inclusive, partial, exclude)
-        if inclusive or partial:
-            for group in inclusive + partial:
+        moflist = self._gen_moflist()
+        if self.options.fnl_include or self.options.fnl_partial:
+            for group in self.options.fnl_include + self.options.fnl_partial:
                 # obtain list of mofs containing group,
-
                 partial_list = self.isolate_group(moflist, group)
                 ranked_list = self.rank_by_uptake(partial_list)
                 for mof in ranked_list:
-                    ngrid = self.grid_points(mof, gridmax)
-                    ngrid_test = (ngrid > 0 and (ngrid <= gridmax if
-                                  gridmax is not None else True))
+                    ngrid = self.grid_points(mof, self.options.max_gridpoints)
+                    ngrid_test = (ngrid > 0 and (ngrid <= 
+                                  self.options.max_gridpoints if
+                                  self.options.max_gridpoints is not 
+                                  None else True))
                     if ngrid_test:
                         groups = self.mof_dic[mof]['functional_groups'].keys()
                         dataset.setdefault(tuple(groups), []).append(mof)
             for key, value in dataset.items():
-                dataset[key] = value[:FNL_MAX]
+                dataset[key] = value[:self.options.functional_max]
         else:
             ranked_list = self.rank_by_uptake(moflist)
-            for mof in ranked_list[:DATA_MAX]:
+            for mof in ranked_list[:self.options.total_mofs]:
                 groups = self.mof_dic[mof]['functional_groups'].keys()
-                ngrid = self.grid_points(mof, gridmax)
-                ngrid_test = (ngrid > 0 and (ngrid <= gridmax if
-                              gridmax is not None else True))
+                ngrid = self.grid_points(mof, self.options.max_gridpoints)
+                ngrid_test = (ngrid > 0 and (ngrid <= 
+                              self.options.max_gridpoints if
+                              self.options.max_gridpoints 
+                              is not None else True))
                 if ngrid_test:
                     dataset.setdefault(tuple(groups), []).append(mof)
-
-        self.write_dataset(dataset, gridmax=None)
+        self.write_dataset(dataset)
 
     def rank_by_uptake(self, mof_list):
         order = []
@@ -408,76 +436,26 @@ class Selector(object):
                 plist.append(mof)
         return plist
 
-    def set_maxima(self, exclude, inclusive, partial, oexclude, oinclude,
-                   topologies):
-        """Set maximum values for the global variables based on the
-        values set by the arrays.
-
-        """
-        global ORG_MAX
-        global ORG_PAIR_MAX
-        global FNL_MAX
-        global FNL_PAIR_MAX
-        global MET_MAX
-        global TOP_MAX
-        # set upper bounds for the topologies and metal indices.
-        if topologies:
-            TOP_MAX = DATA_MAX / len(topologies) + 1
-        MET_MAX = DATA_MAX / len(self.metalind) + 1
-
-
-    def random_select(self, exclude=[], inclusive=[], partial=[],
-                      weight=None, gridmax=None):
+    def random_select(self):
         """Select a list of MOFs randomly 
-        'exclude' defines functional groups which will not be represented
-
-        'inclusive' defines functional groups which will be represented as the
-            only functional group in the mof
-
-        'partial' defines functional groups which can be paired with other
-            functional groups excluding those in 'exclude'
 
         """
-        print "Performing random selection.. values used:\n" + \
-              "inclusive functional groups: ", inclusive, "\n" + \
-              "exclude functional groups: ", exclude, "\n" + \
-              "partial functional groups: ", partial, "\n" + \
-              "weight uptake (gaussian): %s\n"%weight + \
-              "max grid points: ",gridmax, "\n" + \
-              "Total number of MOFs: %i\n"%DATA_MAX + \
-              "Maximum per functional group: %i\n"%FNL_MAX + \
-              "Maximum per functional group pair: %i\n"%FNL_PAIR_MAX + \
-              "Maximum per organic linker: %i\n"%ORG_MAX + \
-              "Maximum per organic linker pair: %i\n"%ORG_PAIR_MAX + \
-              "Maximum per metal index: %i\n"%MET_MAX + \
-              "Maximum per topology: %i\n"%TOP_MAX + \
-              "Gridmax is set to ", gridmax
         dataset = {}
         organics_count, fnl_groups_count = {}, {}
         top_count, met_index_count = {}, {}
         mofcount = 0
-        if inclusive and partial:
-            # check if any co-exist in these lists
-            pair = [set(i) for i in itertools.product(inclusive, partial)
-                    if len(set(i)) == 1]
-            if pair:
-                for i in pair:
-                    group = i[0]
-                    print "Warning duplicate %s found in inclusive"%(group) + \
-                          " partial lists. Appending to inclusive only..."
-                    partial.pop(partial.index(group))
         # generate a list of valid mofs which obey the inclusive, partial and 
         # exclude lists.
-        moflist = self.gen_moflist(inclusive, partial, exclude)
+        moflist = self._gen_moflist()
         done = False
         while not done:
             try:
                 mof = random.choice(moflist)
                 moflist.pop(moflist.index(mof))
             except IndexError:
-                print "Sampled all MOFs without completing list! Writing " + \
-                      "output file anyways.."
-                self.write_dataset(dataset, gridmax)
+                warning("Sampled all MOFs without completing list! Writing " + 
+                      "output file anyways..")
+                self.write_dataset(dataset)
                 return
             met, org1, org2, top, fnl = parse_mof_data(mof)
             uptake = self.mof_dic[mof]['mmol/g']
@@ -500,13 +478,13 @@ class Selector(object):
                                                    topology=top())
             met_max = self.check_dictionary_counts(met_index_count,
                                                    metal=met())
-            if weight is not None:
+            if self.options.gaussian:
                 upt_wght = self.weight_by_gaussian(uptake)
             else:
                 upt_wght = True
-            ngrid = self.grid_points(mof, gridmax)
-            ngrid_test = (ngrid > 0 and (ngrid <= gridmax if 
-                         gridmax is not None else True))
+            ngrid = self.grid_points(mof)
+            ngrid_test = (ngrid > 0 and (ngrid <= self.options.max_gridpoints
+                         if self.options.max_gridpoints is not None else True))
             # check to see if only the weighted uptake failed.
             # If so, put the mof back in the pool for selection later..
             # I did this because the lists are not completing.
@@ -534,25 +512,24 @@ class Selector(object):
                 dataset.setdefault(tuple((fnl_grp1, fnl_grp2)), []).append(mof)
                 self.mof_dic[mof]['ngrid'] = ngrid
                 mofcount += 1
-            if mofcount >= DATA_MAX:
+            if mofcount >= self.options.total_mofs:
                 done = True
-
-        self.write_dataset(dataset, gridmax)
+        self.write_dataset(dataset)
 
     def check_dictionary_counts(self, dictionary, **kwargs):
 
         if 'fnl_group1' in kwargs.keys():
-            maximum = FNL_MAX
-            combine_max = FNL_PAIR_MAX
+            maximum = self.options.functional_max
+            combine_max = self.options.functional_max / 2
         elif 'organic1' in kwargs.keys():
-            maximum = ORG_MAX
-            combine_max = ORG_PAIR_MAX
+            maximum = self.options.organic_max 
+            combine_max = self.options.organic_max / 2
         elif 'metal' in kwargs.keys():
-            maximum = MET_MAX
-            combine_max = MET_MAX
+            maximum = self.options.metal_max
+            combine_max = self.options.metal_max
         elif 'topology' in kwargs.keys():
-            maximum = TOP_MAX
-            combine_max = TOP_MAX
+            maximum = self.options.topology_max
+            combine_max = self.options.topology_max
         # check the combination of arguments
         # only currently valid for organic and functional group dictionaries.
         combine = sorted(kwargs.keys())
@@ -593,26 +570,24 @@ class Selector(object):
             return False
         return True
 
-    def grid_points(self, mofname, gridmax):
+    def grid_points(self, mofname):
         """Determine the maximum number of grid points needed for the esp."""
         # have to source the correct file.
         mofname = clean(mofname)
-        dirmof = (LOOKUPDIR + '/' + 
-                  mofname + '.out.cif')
+        dirmof = os.path.join(self.options.lookup, mofname+'.out.cif') 
         ngrid = -1
-        if os.path.isfile(dirmof) and gridmax is not None:
+        if os.path.isfile(dirmof) and self.options.max_gridpoints is not None:
             from_cif = CifFile(dirmof)
             ngrid = GrabGridPoints(from_cif.cell,
                                    from_cif.atom_symbols,
                                    from_cif.cart_coordinates)
-        elif gridmax is None:
+        elif self.options.max_gridpoints is None:
             ngrid = 1
-
         return ngrid 
 
-    def write_dataset(self, dataset, gridmax):
+    def write_dataset(self, dataset):
         """Writes the data to a file."""
-        os.chdir(WORKDIR)
+        os.chdir(self.options.job_dir)
         basename = ""
         if self.metalind:
             metal_titles = []
@@ -623,34 +598,34 @@ class Selector(object):
             for metal in set(metal_titles):
                 basename += "%s_"%metal
         basename += "dataset"
-        if self.topologies:
-            for top in self.topologies:
+        if self.options.topologies:
+            for top in self.options.topologies:
                 basename += "_%s"%top
         count = 0
         filename = create_csv_filename(basename) 
-        print("Writing dataset to %s.csv..."%(filename))
+        info("Writing dataset to %s.csv..."%(filename))
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
-        if gridmax is not None:
+        if self.options.max_gridpoints is not None:
             header += ",ngrid\n"
         else:
             header += "\n"
         outstream.writelines(header)
         for fnl, mofs in dataset.iteritems():
             if len(fnl) == 1:
-                print "Functional group: %s"%fnl
+                debug("Functional group: %s"%fnl)
                 groups = tuple([fnl[0], None])
             elif len(fnl) == 2:
-                print "Functional groups: %s, %s"%(fnl)
+                debug("Functional groups: %s, %s"%(fnl))
                 groups = fnl
             for mof in mofs:
-                print "     " + mof
+                debug("     " + mof)
                 try:
                     uptake = self.mof_dic[mof]['mmol/g']
                 except KeyError:
                     uptake = 0.
                 line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
-                if gridmax is not None:
+                if self.options.max_gridpoints is not None:
                     try:
                         ngrid = self.mof_dic[mof]['ngrid']
                     except KeyError:
@@ -660,14 +635,17 @@ class Selector(object):
                     line += "\n"
                 outstream.writelines(line)
         outstream.close()
-        print("Done.")
+        info("Done.")
 
-    def gen_moflist(self, inclusive, partial, exclude):
+    def _gen_moflist(self):
         """Returns a list of MOFs which are chosen based on the 
         discrimination input lists.
 
         """
         moflist = []
+        inclusive = self.options.fnl_include
+        partial = self.options.fnl_partial
+        exclude = self.options.fnl_exclude
         if not inclusive and not partial and not exclude:
             return self.mof_dic.keys()
 
@@ -700,12 +678,24 @@ class Selector(object):
 
 class GrabNewData(object):
     """Takes a mof dictionary and adds new uptake data to it."""
-    def __init__(self, mofs, basedir, extended=False):
+    def __init__(self, options, mofs, extended = False):
         self.mofs = mofs
+        self.options = options
         # determines if hydrogen replacements are shown in the output
         self.extended = extended
         # base directory containing all the faps job info.
-        self.basedir = basedir
+        if self.options.directory:
+            if os.path.exists(self.options.directory):
+                self.basedir = self.options.directory
+            else:
+                error("The directory specified in the input file "+
+                        "could not be found: %s"%(self.options.directory))
+                sys.exit(1)
+        else:
+            error("No directory with new data specified in the "+
+                    "input file!")
+            sys.exit(1)
+
     def grab_data(self, temp=298.0, press=0.15):
         """Descends into directories and grabs appropriate data."""
         os.chdir(self.basedir)
@@ -713,6 +703,7 @@ class GrabNewData(object):
         directories = [i for i in all_list if os.path.isdir(i)]
         for mof in self.mofs.keys():
             if mof in directories:
+                info("grabbing data from %s"%mof)
                 os.chdir(mof)
                 if os.path.isfile(mof + "-CO2.csv"):
                     data = CSV(mof + "-CO2.csv", _MOFNAME=False)
@@ -720,24 +711,24 @@ class GrabNewData(object):
                                                   temperature=temp,
                                                   pressure=press)
                 else:
-                    print "ERROR: could not find %s-CO2.csv"%(mof)
+                    warning("could not find %s-CO2.csv"%(mof))
                     new_uptake = 0.
                 os.chdir('..')
             else:
-                print "ERROR: could not find %s in the directory %s"%(
-                        mof, self.basedir)
+                warning("could not find %s in the directory %s"%(
+                        mof, self.basedir))
                 new_uptake = 0. 
             self.mofs[mof]['new_uptake'] = new_uptake
-        os.chdir(WORKDIR)
+        os.chdir(self.options.job_dir)
 
     def write_data(self, filename="default.report.csv"):
         """Write all MOF data to a csv file."""
-        os.chdir(WORKDIR)
+        os.chdir(self.options.job_dir)
         basename = clean(filename)
         count = 0
         # make sure there's no overwriting, goes up to 99
         filename = create_csv_filename(basename)
-        print("Writing report to %s.csv..."%(filename))
+        info("Writing report to %s.csv..."%(filename))
         outstream = open(filename + ".csv", "w")
         if self.extended:
             header = "MOFname,mmol/g,Functional_grp1," +\
@@ -748,7 +739,6 @@ class GrabNewData(object):
 
         outstream.writelines(header)
         for mof in self.mofs.keys():
-            csv_uptake = self.mofs[mof]['mmol/g']
             new_uptake = self.mofs[mof]['new_uptake']
             try:
                 replaced_groups = self.mofs[mof]['functional_groups']
@@ -777,7 +767,7 @@ class GrabNewData(object):
                 line = fmt%(mof, new_uptake, fnl_grp1,
                             fnl_grp2)
             outstream.writelines(line)
-        print("Done.")
+        info("Done.")
         outstream.close()
 
 
@@ -846,7 +836,7 @@ class GrabGridPoints(int):
                                 stderr=subprocess.PIPE)
         comm = job.communicate()
         if comm[1] is not '':
-            print "ERROR in EGULP calculation!"
+            warning("ERROR in EGULP calculation!")
             return -1
         else:
             os.remove(self.geo_file)
@@ -860,7 +850,130 @@ class GrabGridPoints(int):
                 parse = line.lstrip(search_string)
                 return int(parse.strip())
         return -1
- 
+
+class JobHandler(object):
+    """Reads the data in options and directs the program to the
+    appropriate job.
+
+    """
+
+    def __init__(self, options):
+        self.options = options
+    
+    def _direct_job(self):
+
+        if self.options.dataset or self.options.report or self.options.extract:
+            # both need a list of MOFs with functional groups
+            if not self.options.csv_file:
+                error("no .csv file specified in the input")
+                sys.exit(1)
+            if not self.options.sql_file:
+                error("no .sqlout file specified in the input")
+                sys.exit(1)
+
+            self.mofs = CSV(self.options.csv_file)
+            self.fnl_dic = FunctionalGroups(self.options.sql_file)
+            pair_mofs_fnl(self.mofs, self.fnl_dic)
+        
+        if self.options.combine:
+            info("Combining csv files..")
+            self.combine_csvs(*self.options.combine)
+
+        elif self.options.extract:
+            info("Extracting info from csv file %s"%(self.options.csv_file))
+            self.extract_report()
+
+        elif self.options.dataset:
+            if self.options.top_ranked:
+                info("Generating top ranked structures..")
+                self.generate_top_structures()
+            else:
+                info("Generating randomly distributed structures..")
+                self.create_a_dataset()
+
+        elif self.options.report:
+            info("Report requested")
+            self.write_report()
+
+    def extract_report(self):
+        """Write a bunch of reports based on the stats of the MOFs in 
+        the csv file.
+
+        """
+        ext = Extract(self.options, self.mofs)
+        ext.write_overall_csv()
+        ext.write_specific_csv()
+
+    def create_a_dataset(self):
+        """Create a dataset with pre-defined number of MOFs. Change in code
+        if needed.
+    
+        """
+        sel = Selector(self.options, self.mofs)
+        sel.trim_non_existing()
+        sel.random_select()
+
+    def write_report(self):
+        """Write a report on some new uptake data located in 'directory' based
+        on some old data in the 'csvfile'
+
+        """
+        data = GrabNewData(self.options, self.mofs)
+        data.grab_data()
+        data.write_data()
+
+    def generate_top_structures(self)
+        sel = Selector(self.options, self.mofs)
+        sel.trim_non_existing()
+        sel.top_select()
+
+    def combine_csvs(self, *args):
+        """Combine csv files to a single, unified csv.  Compute correlation
+        coefficients for the uptake columns, if the data match.
+
+        """
+        basenames = [clean(i.split("/")[-1]) for i in args]
+        csvs = [CSV(i) for i in args]
+        merged = {}
+        # re-name the uptake column, this will be the only columns which
+        # are not over-written
+        for ind, csv in enumerate(csvs):
+            for key, dic in csv.items():
+                uptake = dic.pop('mmol/g')
+                dic['mmol/g-%s'%basenames[ind]] = uptake
+                merged.setdefault(key, {})
+                merged[key].update(dic)
+        # combine uptake columns
+        corr = [[] for i in range(len(basenames))]
+        for mof, value in merged.items():
+            if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
+                if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
+                    [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
+                            i in basenames]
+                else:
+                    warning("MOF %s not included in correlation calculations "%mof
+                        + "because of 0 value for uptake")
+            else:
+                warning("MOF %s is not included in correlation calculations "%mof +
+                    "because it couldn't be found in one or more csv files.")
+        for upt1, upt2 in itertools.combinations(corr, 2):
+            ind1 = corr.index(upt1)
+            ind2 = corr.index(upt2)
+            info("Correlation coefficients for %s, and %s:"%(
+                 basenames[ind1], basenames[ind2]))
+            rho, pval = stats.spearmanr(upt1, upt2)
+            info("Spearman rank: %7.5f"%rho)
+            pears, p2 = stats.pearsonr(upt1, upt2)
+            info("Pearson correlation: %7.5f"%pears)
+
+        names = {}
+        [names.setdefault(i.split('.')[0], 0) for i in basenames]
+        name = names.keys()[0]
+        name += ".merged"
+        write_csv(name, merged)
+
+
+
 class CifFile(object):
     """This class will grab data from the cif file such as the
     cartesian atom coordinates and the cell vectors.
@@ -872,7 +985,7 @@ class CifFile(object):
         for the egulp method.
 
         """
-        self.mofdata = parse_cif(moffilename)
+        self.mofdata = self.parse_cif(moffilename)
         self.cell = self._grab_cell_vectors()
         self.atom_symbols = self._grab_atom_names()
         self.cart_coordinates = self._grab_cartesians()
@@ -910,39 +1023,39 @@ class CifFile(object):
             coordinates.append(tuple(np.dot(scaled_pos, self.cell)))
         return tuple(coordinates)
 
-def parse_cif(moffilename):
-    """Return a dictionary containing parsed information."""
-    cifstream = open(moffilename, "r")
-    cifdata = {}
-    loopindices = {}
-    loopcount = 0
-    loopread = False
-    for line in cifstream:
-        line = line.strip()
-        if not loopread and line.startswith("_"):
-            parsedline = line.split()
-            cifdata[parsedline[0]] = parsedline[1]
-        if loopread and line.startswith("_"):
-            loopindices[loopcount] = line
-            cifdata[line] = []
-            loopcount += 1
-        # append data to the appropriate heading
-        elif loopread:
-            parsedline = line.split()
-            # pretty crappy check to see if we're on a line of data
-            if len(parsedline) == loopcount:
-                for ind, entry in enumerate(parsedline):
-                    cifdataentry = loopindices[ind]
-                    cifdata[cifdataentry].append(entry)
-            else:
-                loopread = False
+    def parse_cif(self, moffilename):
+        """Return a dictionary containing parsed information."""
+        cifstream = open(moffilename, "r")
+        cifdata = {}
+        loopindices = {}
+        loopcount = 0
+        loopread = False
+        for line in cifstream:
+            line = line.strip()
+            if not loopread and line.startswith("_"):
+                parsedline = line.split()
+                cifdata[parsedline[0]] = parsedline[1]
+            if loopread and line.startswith("_"):
+                loopindices[loopcount] = line
+                cifdata[line] = []
+                loopcount += 1
+            # append data to the appropriate heading
+            elif loopread:
+                parsedline = line.split()
+                # pretty crappy check to see if we're on a line of data
+                if len(parsedline) == loopcount:
+                    for ind, entry in enumerate(parsedline):
+                        cifdataentry = loopindices[ind]
+                        cifdata[cifdataentry].append(entry)
+                else:
+                    loopread = False
 
-        elif "loop_" in line:
-            loopindices = {}
-            loopcount = 0
-            loopread = True
-    cifstream.close()
-    return cifdata 
+            elif "loop_" in line:
+                loopindices = {}
+                loopcount = 0
+                loopread = True
+        cifstream.close()
+        return cifdata 
 
 
 def parse_mof_data(mofname):
@@ -971,111 +1084,16 @@ def parse_mof_data(mofname):
     return metal_index, org1_index, org2_index, topology, fnl_number
 
 
-def pair_csv_fnl(mof, fnl):
+def pair_mofs_fnl(mof, fnl):
     """Join csv and fnl to one dictionary."""
     for name in mof.keys():
         try:
             mof[name]["functional_groups"] = fnl[name]
 
         except KeyError:
-            mof[name]["functional_groups"] = {"None1":[], "None2":[]}
-            #print "Warning: could not find data for %s"%name
-
+            mof[name]["functional_groups"] = {False:[], None:[]}
+            #warning("could not find data for %s"%name)
     del fnl
-
-def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
-                     inclusive=[], exclude=[], partial=[],
-                     gridmax=None,
-                     ignore=None,
-                     topologies=[],
-                     weight=None):
-    """Create a dataset with pre-defined number of MOFs. Change in code
-    if needed.
-
-    """
-    mofs = CSV(csvfile)
-    fnl = FunctionalGroups(sqlfile)
-    pair_csv_fnl(mofs, fnl)
-    sel = Selector(mofs, metals=metals, ignore=ignore, topologies=topologies)
-    #sel.trim_non_existing()
-    sel.random_select(exclude=exclude, inclusive=inclusive, partial=partial, 
-                      gridmax=gridmax, weight=weight)
-
-def write_report(directory=None, sqlfile=None, csvfile=None):
-    """Write a report on some new uptake data located in 'directory' based
-    on some old data in the 'csvfile'
-
-    """
-    mofs = CSV(csvfile)
-    fnl = FunctionalGroups(sqlfile)
-    pair_csv_fnl(mofs, fnl)
-    data = GrabNewData(mofs, basedir=directory, extended=False)
-    data.grab_data()
-    base_list = directory.split("/")
-    base_list = [i for i in base_list if i]
-    # take the last two entries in the directory as the file name
-    basename = ".".join(base_list[-2:])
-    dir = WORKDIR 
-    data.write_data(filename=dir + "/" + basename + ".report.csv")
-
-def generate_top_structures(csvfile=None, sqlfile=None, 
-                            exclude=[], inclusive=[], partial=[],
-                            metals=[],
-                            gridmax=None,
-                            ignore=None):
-    
-    mofs = CSV(csvfile)
-    fnl = FunctionalGroups(sqlfile)
-    pair_csv_fnl(mofs, fnl)
-    sel = Selector(mofs, metals=metals, ignore=ignore)
-    sel.trim_non_existing()
-    sel.top_select(exclude=exclude, inclusive=inclusive, 
-                   partial=partial, gridmax=gridmax)
-
-def combine_csvs(*args):
-    """Combine csv files to a single, unified csv.  Compute correlation
-    coefficients for the uptake columns, if the data match.
-
-    """
-    basenames = [clean(i.split("/")[-1]) for i in args]
-    csvs = [CSV(i) for i in args]
-    merged = {}
-    # re-name the uptake column, this will be the only columns which
-    # are not over-written
-    for ind, csv in enumerate(csvs):
-        for key, dic in csv.items():
-            uptake = dic.pop('mmol/g')
-            dic['mmol/g-%s'%basenames[ind]] = uptake
-            merged.setdefault(key, {})
-            merged[key].update(dic)
-    # combine uptake columns
-    corr = [[] for i in range(len(basenames))]
-    for mof, value in merged.items():
-        if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
-            if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
-                [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
-                        i in basenames]
-            else:
-                print("MOF %s not included in correlation calculations "%mof
-                        + "because of 0 value for uptake")
-        else:
-            print("MOF %s is not included in correlation calculations "%mof +
-                    "because it couldn't be found in one or more csv files.")
-    for upt1, upt2 in itertools.combinations(corr, 2):
-        ind1 = corr.index(upt1)
-        ind2 = corr.index(upt2)
-        print("Correlation coefficients for %s, and %s:"%(
-                 basenames[ind1], basenames[ind2]))
-        rho, pval = stats.spearmanr(upt1, upt2)
-        print("Spearman rank: %7.5f"%rho)
-        pears, p2 = stats.pearsonr(upt1, upt2)
-        print("Pearson correlation: %7.5f"%pears)
-
-    names = {}
-    [names.setdefault(i.split('.')[0], 0) for i in basenames]
-    name = names.keys()[0]
-    name += ".merged"
-    write_csv(name, merged)
 
 def write_csv(basename, dic):
     """Writes a specific csv where the dictionary contains a mof name
@@ -1083,7 +1101,7 @@ def write_csv(basename, dic):
 
     """
     filename = create_csv_filename(basename)
-    print("Writing to %s.csv"%filename)
+    info("Writing to %s.csv"%filename)
     outstream = open(filename + ".csv", "w")
     lead = []
     headings = {}
@@ -1104,167 +1122,149 @@ def write_csv(basename, dic):
         line += ",".join([str(i) for i in entries])
         line += "\n"
         outstream.writelines(line)
-    print("Done.")
+    info("Done.")
     outstream.close()
 
-def extract_info(file_name=None, sqlfile=None, csvfile=None):
+class Extract(object)
     """Extract as much information from a list of mofnames, and provide
     an ammended report with the findings.
 
+    NOTE: the file writing is really ugly... if I have time, repair.
     """
-    all_mofs = CSV(csvfile)
-    all_fnls = FunctionalGroups(sqlfile)
-    pair_csv_fnl(all_mofs, all_fnls)
-    mofs = MOFlist(file_name)
-    mof_dat = {}
-    fnl_count = {}
-    fnl_pair = {}
-    organic_count = {}
-    metal_count = {}
-    org_pair_count = {}
-    full_mof_count = {}
-    for mof in mofs:
-        mof = clean(mof)
-        try:
-            data = all_mofs[mof]
-            mof_dat[mof] = data
-        except KeyError:
-            print("ERROR: could not find data for %s"%mof)
+    def __init__(self, options, mofs):
+        self.options = options
+        self.mofs = mofs.copy() 
+        self.fnl_count = {}
+        self.fnl_pair = {}
+        self.organic_count = {}
+        self.metal_count = {}
+        self.org_pair_count = {}
+        self.full_mof_count = {}
+        self._analyse_data()
 
-    def analyse_data():
-        for mof in mof_dat.keys():
-            met, org1, org2, top, junk = parse_mof_data(mof)
-            stuff = mof_dat[mof]
-            fnls = stuff['functional_groups'].keys()
-            if len(fnls) == 1:
-                fnl1 = fnls[0]
-                fnl2 = None
-                fnl_count.setdefault(fnl1, 0) 
-                fnl_count[fnl1] += 1
-            elif len(fnls) == 2:
-                fnl1, fnl2 = fnls
-                fnl_count.setdefault(fnl1, 0)
-                fnl_count[fnl1] += 1
-                fnl_count.setdefault(fnl2, 0)
-                fnl_count[fnl2] += 1
-                pair = sorted([fnl1, fnl2])
-                fnl_pair.setdefault(tuple(pair), 0) 
-                fnl_pair[tuple(pair)] += 1
-            metal_count.setdefault(met(), 0)
-            metal_count[met()] += 1
-            if org1() == org2():
-                organic_count.setdefault(org1(), 0) 
-                organic_count[org1()] += 1
-            else:
-                organic_count.setdefault(org1(), 0)
-                organic_count[org1()] += 1
-                organic_count.setdefault(org2(), 0) 
-                organic_count[org2()] += 1
-                pair = sorted([org1(), org2()])
-                org_pair_count.setdefault(tuple(pair), 0)
-                org_pair_count[tuple(pair)] += 1
+    def _increment_counts(self, dic, *args):
+        for arg in args:
+            dic.setdefault(arg, 0)
+            dic[arg] += 1
+
+    def _analyse_data(self):
+        for mof, info in self.mofs.items():
+            met, org1, org2, top, junk = parse_mof_data(mof) 
+            fnls = info['functional_groups'].keys()
+            fnl_pair = sorted(set([i for i in fnls if i]))
+            org_pair = sorted(set([org1(), org2()]))
+            [self._increment_counts(self.fnl_count, i) for i in 
+                    fnl_pair]
+            if len(fnl_pair) > 1:
+                self._increment_counts(self.fnl_pair, tuple(fnl_pair))
+            [self._increment_counts(self.organic_count, i) for i in 
+                     org_pair]
+            if len(org_pair) > 1:
+                self._increment_counts(self.org_pair, tuple(org_pair))
+            self._increment_counts(self.metal_count, met())
+
             fullmof = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
-            full_mof_count.setdefault(fullmof, 0) 
-            full_mof_count[fullmof] += 1
+            self._increment_counts(self.full_mof_count, fullmof)
 
-    def write_overall_csv():
-        os.chdir(WORKDIR)
-        basename = clean(filename)
+    def write_overall_csv(self):
+
+        os.chdir(self.options.job_dir)
+        basename = clean(self.options.csv_file)
         count = 0
         files = []
-        print("Writing overall reports...")
+        info("Writing overall reports...")
         # first file prints out individual functional group stats
         fnlfile = basename + ".fnl_grps"
         # create original filename
         fnlfile = create_csv_filename(fnlfile)
-        print("Writing %s.csv"%fnlfile)
+        info("Writing %s.csv"%fnlfile)
         # store filename for archiving later
         files.append("%s.csv"%fnlfile)
         outstream = open(fnlfile + ".csv", "w")
         # write data to file
         outstream.writelines("#functional_group,count\n")
-        for fnl, count in fnl_count.items():
+        for fnl, count in self.fnl_count.items():
             outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
         outstream.close()
         # second file prints out pair functional group stats
         fnlpfile = basename + ".fnl_pairs"
         fnlpfile = create_csv_filename(fnlpfile)
-        print("Writing %s.csv"%fnlpfile)
+        info("Writing %s.csv"%fnlpfile)
         files.append("%s.csv"%fnlpfile)
         outstream = open(fnlpfile + ".csv", "w")
         outstream.writelines("#functional_group1,functional_group2,count\n")
-        for pair, count in fnl_pair.items():
+        for pair, count in self.fnl_pair.items():
             outstream.writelines("%s,%s,%i\n"%(pair[0], pair[1], count))
         outstream.close()
         # third file prints out individual organic group stats
         orgfile = basename + ".org"
         orgfile = create_csv_filename(orgfile)
-        print("Writing %s.csv"%orgfile)
+        info("Writing %s.csv"%orgfile)
         files.append("%s.csv"%orgfile)
         outstream = open(orgfile + ".csv", "w")
         outstream.writelines("#organic_index,count\n")
-        for org, count in organic_count.items():
+        for org, count in self.organic_count.items():
             outstream.writelines("%i,%i\n"%(org, count))
         outstream.close()
         # fourth file prints out organic pair stats
         orgpfile = basename + ".org_pairs"
         orgpfile = create_csv_filename(orgpfile)
-        print("Writing %s.csv"%orgpfile)
+        info("Writing %s.csv"%orgpfile)
         files.append("%s.csv"%orgpfile)
         outstream = open(orgpfile + ".csv", "w")
         outstream.writelines("#organic_index1,organic_index2,count\n")
-        for orgs, count in org_pair_count.items():
+        for orgs, count in self.org_pair_count.items():
             outstream.writelines("%i,%i,%i\n"%(orgs[0], orgs[1], count))
         outstream.close()
         # fifth file prints out metal index stats
         metfile = basename + ".metal"
         metfile = create_csv_filename(metfile)
-        print("Writing %s.csv"%metfile)
+        info("Writing %s.csv"%metfile)
         files.append("%s.csv"%metfile)
         outstream = open(metfile + ".csv", "w")
         outstream.writelines("#metal_index,count\n")
-        for met, count in metal_count.items():
+        for met, count in self.metal_count.items():
             outstream.writelines("%i,%i\n"%(met, count))
         outstream.close()
         # sixth file prints out whole mof stats
         moffile = basename + ".mofname"
         moffile = create_csv_filename(moffile)
-        print("Writing %s.csv"%moffile)
+        info("Writing %s.csv"%moffile)
         files.append("%s.csv"%moffile)
         outstream = open(moffile + ".csv", "w")
         outstream.writelines("#MOFname,count\n")
-        for mof, count in full_mof_count.items():
+        for mof, count in self.full_mof_count.items():
             outstream.writelines("%s,%i\n"%(mof, count))
         outstream.close()
-        print("Done.")
+        info("Done.")
 
         # Archive data
         zipname = basename + ".overall_reports"
         zipname = create_csv_filename(zipname, extension=".zip")
-        print("Archiving to %s.zip ..."%zipname)
+        info("Archiving to %s.zip ..."%zipname)
         zip = zipfile.ZipFile(zipname + ".zip", "w")
         for f in files:
             zip.write("%s"%f)
         zip.close()
-        print("Done.")
+        info("Done.")
         # Clear filenames
         for f in files:
             os.remove(f)
 
-    def write_specific_csv():
-        os.chdir(WORKDIR)
-        basename = clean(file_name)
+    def write_specific_csv(self):
+        os.chdir(self.options.job_dir)
+        basename = clean(self.options.csv_file)
         count = 0
         filename = basename + ".specific_report"
         filename = create_csv_filename(filename)
         outstream = open(filename + ".csv", "w")
-        print ("Writing specific report to %s.csv"%filename)
+        info("Writing specific report to %s.csv"%filename)
         header = "MOFname,functional_group1,functional_group2," +\
                 "mof_occur,metal_occur,org1_occur,org2_occur," +\
                 "org_pair_occur,fnl1_occur,fnl2_occur," +\
                 "fnl_pair_occur\n"
         outstream.writelines(header)
-        for mof, vals in mof_dat.items():
+        for mof, vals in self.mofs.items():
             met, org1, org2, top, fnl = parse_mof_data(mof)
             fnls = vals['functional_groups'].keys()
             # grab all the data for each
@@ -1272,38 +1272,37 @@ def extract_info(file_name=None, sqlfile=None, csvfile=None):
             if len(fnls) == 1:
                fnl1 = fnls[0]
                fnl2 = None
-               fnl1_occur = fnl_count[fnl1]
-               fnl_pair_occur = fnl_count[fnl1]
+               fnl1_occur = self.fnl_count[fnl1]
+               fnl_pair_occur = self.fnl_count[fnl1]
                fnl2_occur = 0
             elif len(fnls) == 2:
                fnl1, fnl2 = fnls
-               fnl1_occur = fnl_count[fnl1]
-               fnl2_occur = fnl_count[fnl2]
+               fnl1_occur = self.fnl_count[fnl1]
+               fnl2_occur = self.fnl_count[fnl2]
                pair = sorted([fnl1, fnl2])
                try:
-                   fnl_pair_occur = fnl_pair[tuple(pair)]
+                   fnl_pair_occur = self.fnl_pair[tuple(pair)]
                except KeyError:
                    fnl_pair_occur = 0
-            met_occur = metal_count[met()]
+            met_occur = self.metal_count[met()]
             orgs = sorted([org1(), org2()])
             if len(set(orgs)) == 1:
-                org1_occur = organic_count[org1()]
+                org1_occur = self.organic_count[org1()]
                 org2_occur = 0
-                org_pair_occur = organic_count[org1()]
+                org_pair_occur = self.organic_count[org1()]
             elif len(set(orgs)) == 2:
-                org1_occur = organic_count[org1()]
-                org2_occur = organic_count[org2()]
-                org_pair_occur = org_pair_count[tuple(orgs)]
+                org1_occur = self.organic_count[org1()]
+                org2_occur = self.organic_count[org2()]
+                org_pair_occur = self.org_pair_count[tuple(orgs)]
 
             mof_abbrev = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
-            mof_occur = full_mof_count[mof_abbrev]
+            mof_occur = self.full_mof_count[mof_abbrev]
             outstream.writelines("%s,%s,%s,%i,%i,%i,%i,%i,%i,%i,%i\n"
                     %(mof,fnl1,fnl2,mof_occur,met_occur,org1_occur,
                         org2_occur,org_pair_occur,fnl1_occur,fnl2_occur,
                         fnl_pair_occur))
         outstream.close()
-        print("Done.")
-    return analyse_data, write_overall_csv, write_specific_csv
+        info("Done.")
 
 def create_csv_filename(basename, extension=".csv"):
     count = 0
@@ -1342,17 +1341,10 @@ def gaussian(a, b, c):
         return a*exp(-(x - b)**2/(2*c**2))
     return g
 
+
 def main():
-    global LOOKUPDIR
-    global WORKDIR
-    global DATA_MAX
-    global FNL_MAX
     options = Options()
-    cmd = CommandLine()
-    LOOKUPDIR = cmd.options.lookup
-    WORKDIR = os.getcwd()
-    DATA_MAX = cmd.options.nummofs
-    FNL_MAX = cmd.options.fnlmax
+    print options.fnl_include 
     if cmd.options.dataset:
         if cmd.options.csvfilename:
             test = os.path.isfile(cmd.options.csvfilename)

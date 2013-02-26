@@ -2,6 +2,7 @@
 import logging
 from logging import debug, error, info
 import os
+import re
 import sys
 import copy
 import textwrap
@@ -16,7 +17,6 @@ class Options(object):
         self._command_options()
         self._init_logging()
         self.job = ConfigParser.SafeConfigParser()
-        self.defaults = ConfigParser.SafeConfigParser()
         self._set_paths()
         self._load_defaults()
         self._load_job()
@@ -42,7 +42,7 @@ class Options(object):
         except IOError:
             error("Error loading defaults.ini")
             default = StringIO('[defaults]\n')
-        self.defaults.readfp(default)
+        self.job.readfp(default)
 
     def _load_job(self):
         """Load data from the local job name."""
@@ -209,10 +209,42 @@ class Options(object):
         by job-specific options.
 
         """
-        for key, value in self.defaults.items('defaults'):
+        for key, value in self.job.items('defaults'):
+            value = self.get_val('defaults', key)
             setattr(self, key, value)
         for key, value in self.job.items('job'):
+            value = self.get_val('job', key)
             setattr(self, key, value)
+
+    def get_val(self, section, key):
+        """Returns the proper type based on the key used."""
+        # known booleans
+        if key == 'report' or key == 'extract' or key == 'dataset' or\
+                key == 'top_ranked' or key == 'random' or \
+                key == 'gaussian':
+            try:
+                val = self.job.getboolean(section, key)
+            except ValueError:
+                val = False
+        # known integers
+        elif key == 'max_gridpoints' or key == 'total_mofs' or \
+                key == 'functional_max' or key == 'organic_max' or \
+                key == 'metal_max' or key == 'topology_max':
+            try: 
+                val = self.job.getint(section, key)
+            except ValueError:
+                val = 0
+        # known lists
+        elif key == 'topologies' or key == 'fnl_include' or \
+            key == 'fnl_partial' or key == 'fnl_exclude' or \
+            key == 'org_include' or key == 'org_exclude' or \
+            key == 'metals' or key == 'combine':
+            p = re.compile('[,;\s]+')
+            val = p.split(self.job.get(section, key))
+            val = [i for i in val if i]
+        else:
+            val = self.job.get(section, key)
+        return val
 
 class ColouredConsoleHandler(logging.StreamHandler):
     """Makes colourised and wrapped output for the console."""
