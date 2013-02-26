@@ -56,7 +56,6 @@ class Options(object):
                     job = '[job]\n' + job
                 job = StringIO(job)
             except IOError:
-                error("Error loading %s"%(self.cmd_opts.input_file))
                 job = StringIO('[job]\n')
         else:
             job = StringIO('[job]\n')
@@ -65,107 +64,26 @@ class Options(object):
     def _command_options(self):
         """Load data from the command line."""
 
-        usage = "%prog [options]\n" + \
-                "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
-                " -c Cu_dataset.csv\n" + \
-                "%prog -s -M Cu -i F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
-                " -G 150000 -I used_mofs -c combined.csv " + \
-                "-L /scratch/tdaff/FinalCif\n" + \
-                "%prog -t -M Cu,Zn -x F,Cl,Br,I,SO3H,NHMe -q allsql.sqlout" +\
-                " -G 150000 -I used_mofs -c combined.csv -N 300 -F 20\n" + \
-                "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
+        usage = "%prog [options]"
         parser = OptionParser(usage=usage)
         parser.add_option("-f", "--file", action="store", type="string",
                           dest="input_file", default="None",
                           help="Specify a job-specific input file.")
-        parser.add_option("-r", "--report", action="store_true",
-                          dest="report",
-                          help="issue a report based on some calculated data.")
-        parser.add_option("-s", "--dataset", action="store_true",
-                          dest="dataset",
-                          help="generate a dataset of randomly selected MOFs.")
-        parser.add_option("-e", "--extract", action="store", type="string",
-                          dest="extract",
-                          help="write a report on a list of MOFs which " + \
-                               "contains counting of functional groups etc.")
-        parser.add_option("-t", "--topranked", action="store_true",
-                          dest="top",
-                          help="create a dataset of top ranked structures.")
-        parser.add_option("-c", "--csvfile", action="store", type="string",
-                          dest="csvfilename",
-                          help="location of csv file with existing data in it.")
-        parser.add_option("-d", "--directory", action="store",
-                          dest="dirname",
-                          help="location of directory containing new data.")
-        parser.add_option("-q", "--sqlfile", action="store", type="string",
-                          dest="sqlname",
-                          help="location of sql file containing mof "+
-                               "functionalizations.")
-        parser.add_option("-I", "--ignore", action="store", type="string",
-                           dest="ignorefile", default='used_mofs',
-                           help="location of list of MOFs to ignore in sampling.")
-        parser.add_option("-x", "--excludelist", 
-                          type="string", dest="exclude",
-                          action="callback",
-                          callback=self.parse_commas, default=[],
-                          help="comma (,) delimited list of functional groups"+
-                               " to exclude from the sampling")
-        parser.add_option("-i", "--inclusivelist", 
-                          type="string", dest="inclusive", 
-                          action="callback",
-                          callback=self.parse_commas, default=[],
-                          help="comma (,) delimited list of functional groups"+
-                               " to sample, excluding all others.")
-        parser.add_option("-p", "--partiallist", 
-                          type="string", dest="partial",
-                          action="callback", default=[],
-                          callback=self.parse_commas,
-                          help="comma (,) delimited list of functional groups"+
-                               " to include in the sampling.")
-        parser.add_option("-L", "--lookupdir", action="store", type="string",
-                          dest="lookup", 
-                          default="/shared_scratch/pboyd/OUTCIF/FinalCif",
-                          help="lookup directory with all the output cifs.")
-        parser.add_option("-M", "--metal", dest="metals", type="string",
-                          action="callback", 
-                          callback=self.parse_commas, default=[],
-                          help="specify metals to generate dataset. Current" +
-                          " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni" + 
-                          " or you can enter the associated indices") 
-        parser.add_option("-T", "--topologies", dest="topologies", type="string",
-                          action="callback", 
-                          callback=self.parse_commas, default=[],
-                          help="specify topologies to include in the dataset." +
-                          " delimited by commas") 
-        parser.add_option("-G", "--gridpoints", action="store", type="int",
-                          dest="maxgridpts",
-                          help="specify the max number of grid points to "+\
-                               "allow the structures to be chosen")
-        parser.add_option("-N", "--mofcount", action="store", type="int",
-                          dest="nummofs", default="120",
-                          help="Number of MOFs to include in the set.")
-        parser.add_option("-F", "--fnlmax", action="store", type="int",
-                          dest="fnlmax", default="20",
-                          help="Maximum number of MOFs with a particular "+\
-                                "functional group.")
         parser.add_option("-C", "--combine", type="string",
                           dest="combine", action="callback",
                           callback=self.parse_commas,
                           help="comma (,) delimited list of csv files to " + \
                           "merge into a larger file.")
-        parser.add_option("-W", "--weight",
-                          action="store_true",
-                          dest="weight",
-                          help="Make the random selected data a gaussian " + \
-                            "weight on the CO2 uptake.")
-        parser.add_option("-S", "--silent", action="store_true",
+        parser.add_option("-s", "--silent", action="store_true",
                           help="Print nothing to the console.")
-        parser.add_option("-Q", "--quiet", action="store_true",
+        parser.add_option("-q", "--quiet", action="store_true",
                           help="Print only warnings and errors.")
-        parser.add_option("-V", "--verbose", action="store_true",
+        parser.add_option("-v", "--verbose", action="store_true",
                           help="Print everything to the console.")
-
         (local_options, local_args) = parser.parse_args()
+        if len(sys.argv) == 1:
+            parser.print_help()
+            sys.exit(1)
         self.cmd_opts = local_options
 
     def _init_logging(self):
