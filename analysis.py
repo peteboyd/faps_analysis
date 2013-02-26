@@ -255,9 +255,9 @@ class Selector(object):
             ]
 
     def __init__(self, options, mof_dic):
-        info("Inclusive functional groups: %s"%(', '.join(options.fnl_include))
-        info("Exclude functional groups: %s"%(', '.join(options.fnl_exclude))
-        info("Partial functional groups: %s"%(', '.join(options.fnl_partial))
+        info("Inclusive functional groups: %s"%(', '.join(options.fnl_include)))
+        info("Exclude functional groups: %s"%(', '.join(options.fnl_exclude)))
+        info("Partial functional groups: %s"%(', '.join(options.fnl_partial)))
         info("Weight uptake (gaussian): %s"%options.gaussian)
         info("Max grid points: %i"%options.max_gridpoints)
         info("Total number of MOFs: %i"%options.total_mofs)
@@ -859,10 +859,26 @@ class JobHandler(object):
 
     def __init__(self, options):
         self.options = options
-    
+        self._direct_job()
+
+    def _check_if_ok(self):
+        if not self.options.combine and not self.options.cmd_opts.combine and\
+                not self.options.dataset and not self.options.report and \
+                not self.options.extract and not self.options.report:
+            error("no job type requested!")
+            sys.exit(1)
+
     def _direct_job(self):
 
-        if self.options.dataset or self.options.report or self.options.extract:
+        self._check_if_ok()
+        if self.options.combine or self.options.cmd_opts.combine:
+            comb_list = self.options.combine + self.options.cmd_opts.combine
+            info("Combining csv files: %s"%(', '.join(comb_list)))
+            self.combine_csvs(*self.options.combine)
+            return
+        # if combine is requested, skip all this
+        if self.options.dataset or self.options.report or \
+                self.options.extract or self.options.report:
             # both need a list of MOFs with functional groups
             if not self.options.csv_file:
                 error("no .csv file specified in the input")
@@ -875,10 +891,6 @@ class JobHandler(object):
             self.fnl_dic = FunctionalGroups(self.options.sql_file)
             pair_mofs_fnl(self.mofs, self.fnl_dic)
         
-        if self.options.combine:
-            info("Combining csv files..")
-            self.combine_csvs(*self.options.combine)
-
         elif self.options.extract:
             info("Extracting info from csv file %s"%(self.options.csv_file))
             self.extract_report()
@@ -922,7 +934,7 @@ class JobHandler(object):
         data.grab_data()
         data.write_data()
 
-    def generate_top_structures(self)
+    def generate_top_structures(self):
         sel = Selector(self.options, self.mofs)
         sel.trim_non_existing()
         sel.top_select()
@@ -972,160 +984,7 @@ class JobHandler(object):
         name += ".merged"
         write_csv(name, merged)
 
-
-
-class CifFile(object):
-    """This class will grab data from the cif file such as the
-    cartesian atom coordinates and the cell vectors.
-    
-    """
-
-    def __init__(self, moffilename):
-        """Read in the mof file and parse the data to write a .geo file
-        for the egulp method.
-
-        """
-        self.mofdata = self.parse_cif(moffilename)
-        self.cell = self._grab_cell_vectors()
-        self.atom_symbols = self._grab_atom_names()
-        self.cart_coordinates = self._grab_cartesians()
-
-    def _grab_cell_vectors(self):
-        """Select the lattice parameters from the mofdata and convert to a
-        3x3 array of cell vectors.
-
-        """
-        a = float(self.mofdata['_cell_length_a'])
-        b = float(self.mofdata['_cell_length_b'])
-        c = float(self.mofdata['_cell_length_c'])
-        alpha = DEG2RAD * float(self.mofdata['_cell_angle_alpha'])
-        beta = DEG2RAD * float(self.mofdata['_cell_angle_beta'])
-        gamma = DEG2RAD * float(self.mofdata['_cell_angle_gamma'])
-        veca = a * np.array([1., 0., 0.])
-        vecb = np.array([b * cos(gamma), b * sin(gamma), 0.])
-        c_x = c * cos(beta)
-        c_y = c * (cos(alpha) - cos(gamma)*cos(beta)) / sin(gamma) 
-        vecc = np.array([c_x, c_y,
-                         sqrt(c**2 - c_x**2 - c_y**2)])
-        return np.array([veca, vecb, vecc])
-
-    def _grab_atom_names(self):
-        """Retun a tuple of the atom names."""
-        return tuple(self.mofdata['_atom_site_type_symbol'])
-
-    def _grab_cartesians(self):
-        """Return a tuple of coordinates of all the atoms."""
-        coordinates = []
-        for x, y, z in zip(self.mofdata['_atom_site_fract_x'],\
-                       self.mofdata['_atom_site_fract_y'],\
-                       self.mofdata['_atom_site_fract_z']):
-            scaled_pos = np.array([float(x), float(y), float(z)])
-            coordinates.append(tuple(np.dot(scaled_pos, self.cell)))
-        return tuple(coordinates)
-
-    def parse_cif(self, moffilename):
-        """Return a dictionary containing parsed information."""
-        cifstream = open(moffilename, "r")
-        cifdata = {}
-        loopindices = {}
-        loopcount = 0
-        loopread = False
-        for line in cifstream:
-            line = line.strip()
-            if not loopread and line.startswith("_"):
-                parsedline = line.split()
-                cifdata[parsedline[0]] = parsedline[1]
-            if loopread and line.startswith("_"):
-                loopindices[loopcount] = line
-                cifdata[line] = []
-                loopcount += 1
-            # append data to the appropriate heading
-            elif loopread:
-                parsedline = line.split()
-                # pretty crappy check to see if we're on a line of data
-                if len(parsedline) == loopcount:
-                    for ind, entry in enumerate(parsedline):
-                        cifdataentry = loopindices[ind]
-                        cifdata[cifdataentry].append(entry)
-                else:
-                    loopread = False
-
-            elif "loop_" in line:
-                loopindices = {}
-                loopcount = 0
-                loopread = True
-        cifstream.close()
-        return cifdata 
-
-
-def parse_mof_data(mofname):
-    mofname = clean(mofname)
-    mofparse = mofname.split("_")
-    data = mofparse[5].split(".")
-    def metal_index():
-        return int(mofparse[1].lstrip("m"))
-
-    def org1_index():
-        return int(mofparse[2].lstrip("o"))
-
-    def org2_index():
-        return int(mofparse[3].lstrip("o"))
-
-    def topology():
-        return data[0]
-
-    def fnl_number():
-        try:
-            num = int(data[2])
-        except IndexError:
-            num = 0
-        return num 
-
-    return metal_index, org1_index, org2_index, topology, fnl_number
-
-
-def pair_mofs_fnl(mof, fnl):
-    """Join csv and fnl to one dictionary."""
-    for name in mof.keys():
-        try:
-            mof[name]["functional_groups"] = fnl[name]
-
-        except KeyError:
-            mof[name]["functional_groups"] = {False:[], None:[]}
-            #warning("could not find data for %s"%name)
-    del fnl
-
-def write_csv(basename, dic):
-    """Writes a specific csv where the dictionary contains a mof name
-    followed by a dictionary of values.
-
-    """
-    filename = create_csv_filename(basename)
-    info("Writing to %s.csv"%filename)
-    outstream = open(filename + ".csv", "w")
-    lead = []
-    headings = {}
-    # set up the headings first, then append data
-    for mof, data in dic.items():
-        [headings.setdefault(i, []) for i in data.keys()]
-    # now append data
-    for mof, data in dic.items():
-        lead.append(mof)
-        for head in headings.keys():
-            try:
-                headings[head].append(data[head])
-            except KeyError:
-                headings[head].append("")
-    outstream.writelines("MOFname," + ",".join(headings.keys()) + "\n")
-    for ind, entries in enumerate(itertools.izip(*headings.values())):
-        line = "%s,"%lead[ind]
-        line += ",".join([str(i) for i in entries])
-        line += "\n"
-        outstream.writelines(line)
-    info("Done.")
-    outstream.close()
-
-class Extract(object)
+class Extract(object):
     """Extract as much information from a list of mofnames, and provide
     an ammended report with the findings.
 
@@ -1304,6 +1163,157 @@ class Extract(object)
         outstream.close()
         info("Done.")
 
+class CifFile(object):
+    """This class will grab data from the cif file such as the
+    cartesian atom coordinates and the cell vectors.
+    
+    """
+
+    def __init__(self, moffilename):
+        """Read in the mof file and parse the data to write a .geo file
+        for the egulp method.
+
+        """
+        self.mofdata = self.parse_cif(moffilename)
+        self.cell = self._grab_cell_vectors()
+        self.atom_symbols = self._grab_atom_names()
+        self.cart_coordinates = self._grab_cartesians()
+
+    def _grab_cell_vectors(self):
+        """Select the lattice parameters from the mofdata and convert to a
+        3x3 array of cell vectors.
+
+        """
+        a = float(self.mofdata['_cell_length_a'])
+        b = float(self.mofdata['_cell_length_b'])
+        c = float(self.mofdata['_cell_length_c'])
+        alpha = DEG2RAD * float(self.mofdata['_cell_angle_alpha'])
+        beta = DEG2RAD * float(self.mofdata['_cell_angle_beta'])
+        gamma = DEG2RAD * float(self.mofdata['_cell_angle_gamma'])
+        veca = a * np.array([1., 0., 0.])
+        vecb = np.array([b * cos(gamma), b * sin(gamma), 0.])
+        c_x = c * cos(beta)
+        c_y = c * (cos(alpha) - cos(gamma)*cos(beta)) / sin(gamma) 
+        vecc = np.array([c_x, c_y,
+                         sqrt(c**2 - c_x**2 - c_y**2)])
+        return np.array([veca, vecb, vecc])
+
+    def _grab_atom_names(self):
+        """Retun a tuple of the atom names."""
+        return tuple(self.mofdata['_atom_site_type_symbol'])
+
+    def _grab_cartesians(self):
+        """Return a tuple of coordinates of all the atoms."""
+        coordinates = []
+        for x, y, z in zip(self.mofdata['_atom_site_fract_x'],\
+                       self.mofdata['_atom_site_fract_y'],\
+                       self.mofdata['_atom_site_fract_z']):
+            scaled_pos = np.array([float(x), float(y), float(z)])
+            coordinates.append(tuple(np.dot(scaled_pos, self.cell)))
+        return tuple(coordinates)
+
+    def parse_cif(self, moffilename):
+        """Return a dictionary containing parsed information."""
+        cifstream = open(moffilename, "r")
+        cifdata = {}
+        loopindices = {}
+        loopcount = 0
+        loopread = False
+        for line in cifstream:
+            line = line.strip()
+            if not loopread and line.startswith("_"):
+                parsedline = line.split()
+                cifdata[parsedline[0]] = parsedline[1]
+            if loopread and line.startswith("_"):
+                loopindices[loopcount] = line
+                cifdata[line] = []
+                loopcount += 1
+            # append data to the appropriate heading
+            elif loopread:
+                parsedline = line.split()
+                # pretty crappy check to see if we're on a line of data
+                if len(parsedline) == loopcount:
+                    for ind, entry in enumerate(parsedline):
+                        cifdataentry = loopindices[ind]
+                        cifdata[cifdataentry].append(entry)
+                else:
+                    loopread = False
+
+            elif "loop_" in line:
+                loopindices = {}
+                loopcount = 0
+                loopread = True
+        cifstream.close()
+        return cifdata 
+
+
+def parse_mof_data(mofname):
+    mofname = clean(mofname)
+    mofparse = mofname.split("_")
+    data = mofparse[5].split(".")
+    def metal_index():
+        return int(mofparse[1].lstrip("m"))
+
+    def org1_index():
+        return int(mofparse[2].lstrip("o"))
+
+    def org2_index():
+        return int(mofparse[3].lstrip("o"))
+
+    def topology():
+        return data[0]
+
+    def fnl_number():
+        try:
+            num = int(data[2])
+        except IndexError:
+            num = 0
+        return num 
+
+    return metal_index, org1_index, org2_index, topology, fnl_number
+
+
+def pair_mofs_fnl(mof, fnl):
+    """Join csv and fnl to one dictionary."""
+    for name in mof.keys():
+        try:
+            mof[name]["functional_groups"] = fnl[name]
+
+        except KeyError:
+            mof[name]["functional_groups"] = {False:[], None:[]}
+            #warning("could not find data for %s"%name)
+    del fnl
+
+def write_csv(basename, dic):
+    """Writes a specific csv where the dictionary contains a mof name
+    followed by a dictionary of values.
+
+    """
+    filename = create_csv_filename(basename)
+    info("Writing to %s.csv"%filename)
+    outstream = open(filename + ".csv", "w")
+    lead = []
+    headings = {}
+    # set up the headings first, then append data
+    for mof, data in dic.items():
+        [headings.setdefault(i, []) for i in data.keys()]
+    # now append data
+    for mof, data in dic.items():
+        lead.append(mof)
+        for head in headings.keys():
+            try:
+                headings[head].append(data[head])
+            except KeyError:
+                headings[head].append("")
+    outstream.writelines("MOFname," + ",".join(headings.keys()) + "\n")
+    for ind, entries in enumerate(itertools.izip(*headings.values())):
+        line = "%s,"%lead[ind]
+        line += ",".join([str(i) for i in entries])
+        line += "\n"
+        outstream.writelines(line)
+    info("Done.")
+    outstream.close()
+
 def create_csv_filename(basename, extension=".csv"):
     count = 0
     filename = basename
@@ -1344,121 +1354,8 @@ def gaussian(a, b, c):
 
 def main():
     options = Options()
+    job = JobHandler(options)
     print options.fnl_include 
-    if cmd.options.dataset:
-        if cmd.options.csvfilename:
-            test = os.path.isfile(cmd.options.csvfilename)
-            if not test:
-                print("ERROR: could not find the .csv file")
-                sys.exit()
-        else:
-            print("ERROR: .csv filename not set in the command line")
-            sys.exit()
-        if cmd.options.sqlname:
-            test = os.path.isfile(cmd.options.sqlname)
-            if not test:
-                print("ERROR: could not find the sql file")
-                sys.exit()
-        else:
-            print("ERROR: sql file not set in the command line")
-        if cmd.options.maxgridpts:
-            print("Excluding MOFs with gridpoints exceeding %i"%
-                    (cmd.options.maxgridpts))
-
-        create_a_dataset(csvfile=cmd.options.csvfilename,
-                         sqlfile=cmd.options.sqlname,
-                         metals=cmd.options.metals,
-                         inclusive=cmd.options.inclusive,
-                         exclude=cmd.options.exclude,
-                         partial=cmd.options.partial,
-                         gridmax=cmd.options.maxgridpts,
-                         ignore=cmd.options.ignorefile,
-                         topologies=cmd.options.topologies,
-                         weight=cmd.options.weight)
-                         
-    if cmd.options.report:
-        if cmd.options.dirname:
-            test = os.path.isdir(cmd.options.dirname)
-            if not test:
-                print("ERROR: could not find the directory containing MOFs")
-        else:
-            print("ERROR: directory not set in the command line")
-            sys.exit()
-        if cmd.options.csvfilename:
-            test = os.path.isfile(cmd.options.csvfilename)
-            if not test:
-                print("ERROR: could not find the .csv file")
-                sys.exit()
-        else:
-            print("ERROR: .csv filename not set in the command line")
-            sys.exit()
-        if cmd.options.sqlname:
-            test = os.path.isfile(cmd.options.sqlname)
-            if not test:
-                print("ERROR: could not find the sql file")
-                sys.exit()
-        else:
-            print("ERROR: sql file not set in the command line")
-            sys.exit()
-
-        write_report(directory=cmd.options.dirname,
-                     sqlfile=cmd.options.sqlname,
-                     csvfile=cmd.options.csvfilename)
-
-    if cmd.options.extract:
-        if cmd.options.csvfilename:
-            test = os.path.isfile(cmd.options.csvfilename)
-            if not test:
-                print("ERROR: could not find the .csv file")
-                sys.exit()
-        else:
-            print("ERROR: .csv filename not set in the command line")
-            sys.exit()
-        if cmd.options.sqlname:
-            test = os.path.isfile(cmd.options.sqlname)
-            if not test:
-                print("ERROR: could not find the sql file")
-                sys.exit()
-        else:
-            print("ERROR: sql file not set in the command line")
-        if not os.path.isfile(cmd.options.extract):
-            print("ERROR: could not find the mof file")
-            sys.exit()
-
-        an, over, spec = extract_info(
-                     file_name=cmd.options.extract,
-                     sqlfile=cmd.options.sqlname,
-                     csvfile=cmd.options.csvfilename)
-        an()
-        over()
-        spec()
-
-    if cmd.options.top:
-        if cmd.options.csvfilename:
-            test = os.path.isfile(cmd.options.csvfilename)
-            if not test:
-                print("ERROR: could not find the .csv file")
-                sys.exit()
-        else:
-            print("ERROR: .csv filename not set in the command line")
-            sys.exit()
-        if cmd.options.sqlname:
-            test = os.path.isfile(cmd.options.sqlname)
-            if not test:
-                print("ERROR: could not find the sql file")
-                sys.exit()
-
-        generate_top_structures(csvfile=cmd.options.csvfilename,
-                                sqlfile=cmd.options.sqlname,
-                                exclude=cmd.options.exclude,
-                                inclusive=cmd.options.inclusive,
-                                partial=cmd.options.partial,
-                                metals=cmd.options.metals,
-                                gridmax=cmd.options.maxgridpts,
-                                ignore=cmd.options.ignorefile
-                                )
-    if cmd.options.combine:
-        combine_csvs(*cmd.options.combine)
 
 if __name__ == "__main__":
     main()
