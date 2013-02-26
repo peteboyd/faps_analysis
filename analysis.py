@@ -12,13 +12,12 @@ import random
 from math import cos, sin, sqrt, pi, exp
 import numpy as np
 from scipy import stats
-from optparse import OptionParser
-import ConfigParser
-from StringIO import StringIO
+from options import Options
 import subprocess
 import zipfile
 import uuid
 import itertools
+from logging import info, debug, warning, error, critical
 
 DEG2RAD = pi / 180.0
 ATOM_NUM = [
@@ -299,6 +298,8 @@ class Selector(object):
         # set upper bounds for the topologies and metal indices
         if topologies:
             TOP_MAX = DATA_MAX / len(topologies) + 1
+        else:
+            TOP_MAX = DATA_MAX
         MET_MAX = DATA_MAX / len(self.metalind) + 1
         self.topologies = topologies
         top_bool = True if topologies else False
@@ -473,7 +474,6 @@ class Selector(object):
             try:
                 mof = random.choice(moflist)
                 moflist.pop(moflist.index(mof))
-
             except IndexError:
                 print "Sampled all MOFs without completing list! Writing " + \
                       "output file anyways.."
@@ -514,7 +514,6 @@ class Selector(object):
                     and not met_max and ngrid_test:
                 # put the mof back in the random selection pool.
                 moflist.append(mof)
-
             if ngrid_test and not org_max and not fnl_max and not top_max and \
                     not met_max and upt_wght:
                 # increment counts 
@@ -781,138 +780,6 @@ class GrabNewData(object):
         print("Done.")
         outstream.close()
 
-class Options(object):
-    """Read in the options from the config file."""
-    def __init__(self, name=None):
-        self.job = ConfigParser.SafeConfigParser()
-        self.defaults = ConfigParser.SafeConfigParser()
-        self._set_paths()
-        
-    def _set_paths(self):
-        if __name__ != '__main__':
-            self.script_dir = os.path.dirname(__file__)
-        else:
-            self.script_dir = os.path.abspath(sys.path[0])
-        self.job_dir = os.getcwd()
-
-    def load_defaults(self):
-        default_path = os.path.join(self.script_dir, 'defaults.ini')
-        print default_path
-        try:
-            filetemp = open(default_path, 'r')
-            default = filetemp.read()
-            filetemp.close()
-            if not '[defaults]' in default.lower():
-                default = '[defaults]\n' + default
-            default = StringIO(default)
-        except IOError:
-            print("Error loading defaults.ini")
-            default = StringIO('[defaults]\n')
-        self.defaults.readfp(default)
-
-class CommandLine(object):
-    """Parse command line options and communicate directives to the program."""
-
-    def __init__(self):
-        self.commands = {}
-        self.command_options()
-
-    def command_options(self):
-        usage = "%prog [options]\n" + \
-                "%prog -r -d Cu_dataset/NO_CHG -q cusql.sqlout" +\
-                " -c Cu_dataset.csv\n" + \
-                "%prog -s -M Cu -i F,Cl,Br,I,SO3H,NHMe -q cusql.sqlout" +\
-                " -G 150000 -I used_mofs -c combined.csv " + \
-                "-L /scratch/tdaff/FinalCif\n" + \
-                "%prog -t -M Cu,Zn -x F,Cl,Br,I,SO3H,NHMe -q allsql.sqlout" +\
-                " -G 150000 -I used_mofs -c combined.csv -N 300 -F 20\n" + \
-                "%prog -e cif_whole_error -c combined.csv -q allsql.sqlout"
-        parser = OptionParser(usage=usage)
-        parser.add_option("-r", "--report", action="store_true",
-                          dest="report",
-                          help="issue a report based on some calculated data.")
-        parser.add_option("-s", "--dataset", action="store_true",
-                          dest="dataset",
-                          help="generate a dataset of randomly selected MOFs.")
-        parser.add_option("-e", "--extract", action="store", type="string",
-                          dest="extract",
-                          help="write a report on a list of MOFs which " + \
-                               "contains counting of functional groups etc.")
-        parser.add_option("-t", "--topranked", action="store_true",
-                          dest="top",
-                          help="create a dataset of top ranked structures.")
-        parser.add_option("-c", "--csvfile", action="store", type="string",
-                          dest="csvfilename",
-                          help="location of csv file with existing data in it.")
-        parser.add_option("-d", "--directory", action="store",
-                          dest="dirname",
-                          help="location of directory containing new data.")
-        parser.add_option("-q", "--sqlfile", action="store", type="string",
-                          dest="sqlname",
-                          help="location of sql file containing mof "+
-                               "functionalizations.")
-        parser.add_option("-I", "--ignore", action="store", type="string",
-                           dest="ignorefile", default='used_mofs',
-                           help="location of list of MOFs to ignore in sampling.")
-        parser.add_option("-x", "--excludelist", 
-                          type="string", dest="exclude",
-                          action="callback",
-                          callback=self.parse_commas, default=[],
-                          help="comma (,) delimited list of functional groups"+
-                               " to exclude from the sampling")
-        parser.add_option("-i", "--inclusivelist", 
-                          type="string", dest="inclusive", 
-                          action="callback",
-                          callback=self.parse_commas, default=[],
-                          help="comma (,) delimited list of functional groups"+
-                               " to sample, excluding all others.")
-        parser.add_option("-p", "--partiallist", 
-                          type="string", dest="partial",
-                          action="callback", default=[],
-                          callback=self.parse_commas,
-                          help="comma (,) delimited list of functional groups"+
-                               " to include in the sampling.")
-        parser.add_option("-L", "--lookupdir", action="store", type="string",
-                          dest="lookup", 
-                          default="/shared_scratch/pboyd/OUTCIF/FinalCif",
-                          help="lookup directory with all the output cifs.")
-        parser.add_option("-M", "--metal", dest="metals", type="string",
-                          action="callback", 
-                          callback=self.parse_commas, default=[],
-                          help="specify metals to generate dataset. Current" +
-                          " options are: Zn, Cu, Co, Cd, Mn, Zr, In, V, Ba or Ni" + 
-                          " or you can enter the associated indices") 
-        parser.add_option("-T", "--topologies", dest="topologies", type="string",
-                          action="callback", 
-                          callback=self.parse_commas, default=[],
-                          help="specify topologies to include in the dataset." +
-                          " delimited by commas") 
-        parser.add_option("-G", "--gridpoints", action="store", type="int",
-                          dest="maxgridpts",
-                          help="specify the max number of grid points to "+\
-                               "allow the structures to be chosen")
-        parser.add_option("-N", "--mofcount", action="store", type="int",
-                          dest="nummofs", default="120",
-                          help="Number of MOFs to include in the set.")
-        parser.add_option("-F", "--fnlmax", action="store", type="int",
-                          dest="fnlmax", default="20",
-                          help="Maximum number of MOFs with a particular "+\
-                                "functional group.")
-        parser.add_option("-C", "--combine", type="string",
-                          dest="combine", action="callback",
-                          callback=self.parse_commas,
-                          help="comma (,) delimited list of csv files to " + \
-                          "merge into a larger file.")
-        parser.add_option("-W", "--weight",
-                          action="store_true",
-                          help="Make the random selected data a gaussian " + \
-                            "weight on the CO2 uptake.")
-
-        (local_options, local_args) = parser.parse_args()
-        self.options = local_options
-
-    def parse_commas(self, option, opt, value, parser):
-        setattr(parser.values, option.dest, value.split(','))
 
 class GrabGridPoints(int):
     """Extracts an integer of grid points from an egulp calculation."""
@@ -1130,7 +997,7 @@ def create_a_dataset(csvfile=None, sqlfile=None, metals=[],
     fnl = FunctionalGroups(sqlfile)
     pair_csv_fnl(mofs, fnl)
     sel = Selector(mofs, metals=metals, ignore=ignore, topologies=topologies)
-    sel.trim_non_existing()
+    #sel.trim_non_existing()
     sel.random_select(exclude=exclude, inclusive=inclusive, partial=partial, 
                       gridmax=gridmax, weight=weight)
 
@@ -1481,7 +1348,6 @@ def main():
     global DATA_MAX
     global FNL_MAX
     options = Options()
-    options.load_defaults()
     cmd = CommandLine()
     LOOKUPDIR = cmd.options.lookup
     WORKDIR = os.getcwd()
