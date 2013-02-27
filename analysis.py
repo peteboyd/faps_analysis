@@ -41,7 +41,7 @@ class CSV(dict):
         self._columns = {"MOF":"MOFname", "uptake":"mmol/g",
                       "temperature":"T/K", "pressure":"p/bar"}
         self.filename = filename
-        if not os.path.exists(filename):
+        if not os.path.isfile(filename):
             error("Could not find the file: %s"%filename)
             sys.exit(1)
         head_read = open(filename, "r")
@@ -147,7 +147,7 @@ class FunctionalGroups(dict):
 
     def __init__(self, filename):
         """Read in all the mofs and store in the dictionary."""
-        if not os.path.exists(filename):
+        if not os.path.isfile(filename):
             error("could not find the file: %s"%(filename))
             sys.exit(1)
         filestream = open(filename, 'r')
@@ -255,16 +255,6 @@ class Selector(object):
             ]
 
     def __init__(self, options, mof_dic):
-        info("Inclusive functional groups: %s"%(', '.join(options.fnl_include)))
-        info("Exclude functional groups: %s"%(', '.join(options.fnl_exclude)))
-        info("Partial functional groups: %s"%(', '.join(options.fnl_partial)))
-        info("Weight uptake (gaussian): %s"%options.gaussian)
-        info("Max grid points: %i"%options.max_gridpoints)
-        info("Total number of MOFs: %i"%options.total_mofs)
-        info("Maximum per functional group: %i"%options.functional_max)
-        info("Maximum per organic linker: %i"%options.organic_max)
-        info("Maximum per metal index: %i"%options.metal_max)
-        info("Maximum per topology: %i"%options.topology_max)
         self.options = options
         self.mof_dic = mof_dic.copy()
         used_mofs = MOFlist(self.options.ignore_list)
@@ -276,10 +266,26 @@ class Selector(object):
                 pass
         self._assign_metalind()
         self._assign_maxima()
+        top_bool = True if self.options.topologies else False
+        self._print_info()
         if self.options.max_gridpoints == 0:
             self.options.max_gridpoints = None
-        top_bool = True if self.options.topologies else False
         self.trim_undesired(_TOPOLOGY=top_bool)
+
+    def _print_info(self):
+        info("Inclusive functional groups: %s"%
+                (', '.join(self.options.fnl_include)))
+        info("Exclude functional groups: %s"%
+                (', '.join(self.options.fnl_exclude)))
+        info("Partial functional groups: %s"%
+                (', '.join(self.options.fnl_partial)))
+        info("Weight uptake (gaussian): %s"%self.options.gaussian)
+        info("Max grid points: %i"%self.options.max_gridpoints)
+        info("Total number of MOFs: %i"%self.options.total_mofs)
+        info("Maximum per functional group: %i"%self.options.functional_max)
+        info("Maximum per organic linker: %i"%self.options.organic_max)
+        info("Maximum per metal index: %i"%self.options.metal_max)
+        info("Maximum per topology: %i"%self.options.topology_max)
 
     def _assign_metalind(self):
         # assert if a metal is selected
@@ -315,6 +321,8 @@ class Selector(object):
         if self.options.topology_max == 0 and len(self.options.topologies) != 0:
             self.options.topology_max = (self.options.total_mofs /
                                          len(self.options.topologies))
+        elif self.options.topology_max == 0 and len(self.options.topologies) == 0:
+            self.options.topology_max = self.options.total_mofs
         # metal
         if self.options.metal_max == 0 and len(self.metalind) != 0:
             self.options.metal_max = (self.options.total_mofs /
@@ -448,6 +456,7 @@ class Selector(object):
         # exclude lists.
         moflist = self._gen_moflist()
         done = False
+        info("Size of the list of MOFs to sample from: %i"%(len(moflist))) 
         while not done:
             try:
                 mof = random.choice(moflist)
@@ -492,6 +501,18 @@ class Selector(object):
                     and not met_max and ngrid_test:
                 # put the mof back in the random selection pool.
                 moflist.append(mof)
+
+            # debug to figure out why full lists are not being made
+            if not ngrid_test or org_max or fnl_max or top_max or met_max or \
+                    not upt_wght:
+                debug("Tests for mof %s"%mof)
+                debug("Grid point test: %s"%ngrid_test)
+                debug("Weight on uptake test: %s"%upt_wght)
+                debug("Max Organic test: %s"%org_max)
+                debug("Max Functional group test: %s"%fnl_max)
+                debug("Max topology test: %s"%top_max)
+                debug("Max metal test: %s"%met_max)
+            
             if ngrid_test and not org_max and not fnl_max and not top_max and \
                     not met_max and upt_wght:
                 # increment counts 
@@ -653,7 +674,7 @@ class Selector(object):
             try:
                 (group1, group2) = value['functional_groups'].keys()
             except KeyError:
-                value['functional_groups'] = {"None1":[], "None2":[]}
+                value['functional_groups'] = {False:[], None:[]}
                 (group1, group2) = (None, None)
             except ValueError:
                 group1, group2 = None, None
@@ -869,12 +890,11 @@ class JobHandler(object):
             sys.exit(1)
 
     def _direct_job(self):
-
         self._check_if_ok()
         if self.options.combine or self.options.cmd_opts.combine:
             comb_list = self.options.combine + self.options.cmd_opts.combine
             info("Combining csv files: %s"%(', '.join(comb_list)))
-            self.combine_csvs(*self.options.combine)
+            self.combine_csvs(*set(comb_list))
             return
         # if combine is requested, skip all this
         if self.options.dataset or self.options.report or \
@@ -891,7 +911,7 @@ class JobHandler(object):
             self.fnl_dic = FunctionalGroups(self.options.sql_file)
             pair_mofs_fnl(self.mofs, self.fnl_dic)
         
-        elif self.options.extract:
+        if self.options.extract:
             info("Extracting info from csv file %s"%(self.options.csv_file))
             self.extract_report()
 
@@ -1019,7 +1039,7 @@ class Extract(object):
             [self._increment_counts(self.organic_count, i) for i in 
                      org_pair]
             if len(org_pair) > 1:
-                self._increment_counts(self.org_pair, tuple(org_pair))
+                self._increment_counts(self.org_pair_count, tuple(org_pair))
             self._increment_counts(self.metal_count, met())
 
             fullmof = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
@@ -1043,7 +1063,7 @@ class Extract(object):
         # write data to file
         outstream.writelines("#functional_group,count\n")
         for fnl, count in self.fnl_count.items():
-            outstream.writelines("%s,%i\n"%(fnl,fnl_count[fnl]))
+            outstream.writelines("%s,%i\n"%(fnl,count))
         outstream.close()
         # second file prints out pair functional group stats
         fnlpfile = basename + ".fnl_pairs"
@@ -1127,7 +1147,7 @@ class Extract(object):
             met, org1, org2, top, fnl = parse_mof_data(mof)
             fnls = vals['functional_groups'].keys()
             # grab all the data for each
-            fnls = sorted(fnls)
+            fnls = sorted([i for i in fnls if i])
             if len(fnls) == 1:
                fnl1 = fnls[0]
                fnl2 = None
@@ -1355,7 +1375,6 @@ def gaussian(a, b, c):
 def main():
     options = Options()
     job = JobHandler(options)
-    print options.fnl_include 
 
 if __name__ == "__main__":
     main()

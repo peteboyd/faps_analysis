@@ -74,11 +74,21 @@ class Options(object):
                           callback=self.parse_commas,
                           help="comma (,) delimited list of csv files to " + \
                           "merge into a larger file.")
+        parser.add_option("-e", "--extract", action="store",
+                          dest='extract',
+                          help="Extract info from the supplied file name.")
+        parser.add_option("-Q", "--sqlfile", action="store",
+                          dest="sql_file",
+                          help="Specify the sql file containing all " + \
+                                  "functional group information.")
         parser.add_option("-s", "--silent", action="store_true",
+                          dest="silent",
                           help="Print nothing to the console.")
         parser.add_option("-q", "--quiet", action="store_true",
+                          dest="quiet",
                           help="Print only warnings and errors.")
         parser.add_option("-v", "--verbose", action="store_true",
+                          dest="verbose",
                           help="Print everything to the console.")
         (local_options, local_args) = parser.parse_args()
         if len(sys.argv) == 1:
@@ -133,6 +143,14 @@ class Options(object):
         for key, value in self.job.items('job'):
             value = self.get_val('job', key)
             setattr(self, key, value)
+        # special option to over-ride the input file, so that
+        # extract can be easily issued from the command-line.
+        if self.cmd_opts.extract:
+            setattr(self, 'extract', True)
+            setattr(self, 'csv_file', self.cmd_opts.extract)
+        # option over-writes the sql file in the input file
+        if self.cmd_opts.sql_file:
+            setattr(self, 'sql_file', self.cmd_opts.sql_file)
 
     def get_val(self, section, key):
         """Returns the proper type based on the key used."""
