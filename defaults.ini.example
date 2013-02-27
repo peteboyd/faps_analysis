@@ -1,0 +1,55 @@
+# Lookup directory for database of MOFs 
+lookup = /shared_scratch/pboyd/OUTCIF/FinalCif
+# Location of directory containing new calculated data
+directory = 
+# file contiaining list of MOFs to ignore
+ignore_list = 
+# Combine data from multiple csvs
+combine =
+# Request a report from calculated data
+report = False
+# Request a report on a list of MOFs
+extract = False
+# Request a dataset to be build from a set of MOFs
+dataset = False
+# Request the set to be top ranked structures (dataset: [True])
+top_ranked = False
+# Request the set to be randomly chosen (dataset: [True])
+random = False
+# Request the set to be gaussian weighted by the uptake (dataset: [True])
+gaussian = False
+# Location of the csv file containing all the MOFs to select from
+csv_file = 
+# Location of the sql file containing all the MOFs functional group records
+sql_file = cusql.sqlout
+# Metals to include in the set
+metals = Cu
+# Topologies to include in the set
+topologies = pcu 
+# Request that the list of MOFs contain exclusively these functional groups.
+# Each MOF will contain ONLY one functional group listed here (dataset: [True])
+fnl_include = H,F,Cl,Br,I
+# Request the list of MOFs contain these functional groups.  They can be paired
+# with other functional groups which are not in the list but not in the
+# exclude list (dataset: [True])
+fnl_partial = 
+# Request the list of MOFs NOT contain these functional groups. (dataset: [True])
+fnl_exclude = 
+# Request the inclusion of these organic linkers in the dataset. (dataset: [True])
+org_include =
+# Request that none of these organic linkers be included in the dataset. (dataset: [True])
+org_exclude = 
+# Total number of MOFs in the dataset (default: [100])
+total_mofs =
+# Maximum number of grid points allowed for the egulp charge calculation (default 0)
+max_gridpoints = 
+# maximum number of each functional group in the dataset (default determined by total_mofs)
+functional_max =
+# maximum number of each organic group in the dataset (default determined by total_mofs)
+organic_max = 
+# maximum number of each metal in the dataset (default determined by total_mofs)
+metal_max =
+# maximum number of each topology to include in the dataset (default determined by total_mofs)
+topology_max =
+
+# vim:ft=dosini:set paste:
