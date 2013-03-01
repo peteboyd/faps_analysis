@@ -375,6 +375,9 @@ class Selector(object):
         """
         dir = self.options.lookup 
         info("Checking %s for all mofs..."%(dir))
+        if not os.path.isdir(self.options.lookup):
+            error("Problem finding the directory, exiting..")
+            sys.exit(1)
         temp_moflist = self.mof_dic.keys()
         for mof in temp_moflist:
             # re-name mof to the out directory standards.

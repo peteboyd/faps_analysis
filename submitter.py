@@ -184,16 +184,18 @@ for dir in ${dirs[@]}; do
     fi
 done
 """%(basename)
-    file = open('zipper.sh', 'w')
+    file = open('zipper_chg.sh', 'w')
     file.writelines(line)
     file.close()
-    os.chmod('zipper.sh', stat.S_IRWXU)
+    os.chmod('zipper_chg.sh', stat.S_IRWXU)
 
 def zipper_fap_cif(basename):
     line = \
 """!/bin/bash
 zipname="%s.zip"
 read -a dirs <<< `ls -d -- */`
+zip $zipname faps_sub.sh
+zip $zipname zipper_chg.sh
 for dir in ${dirs[@]}; do
     mof=${dir%%'/'}
     zip $zipname ${mof}/${mof}.cif
@@ -312,35 +314,35 @@ def clean(x):
 def gen_submit_dir(cmd, local_dir, basefile):
     if cmd.options.CHARGE_ZERO:
         try:
-            os.makedirs("%s/%s/%s"%(local_dir, basefile, "NO_CHG"))
+            os.makedirs(os.path.join(local_dir, basefile, "NO_CHG"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = "%s/%s/%s"%(local_dir, basefile, "NO_CHG")
+        submit_dir = os.path.join(local_dir, basefile, "NO_CHG")
     elif cmd.options.CHARGE_EGULP_3:
         try:
-            os.makedirs("%s/%s/%s"%(local_dir, basefile, "EGULP.param.3"))
+            os.makedirs(os.path.join(local_dir, basefile, "EGULP.param.3"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = "%s/%s/%s"%(local_dir, basefile, "EGULP.param.3")
+        submit_dir = os.path.join(local_dir, basefile, "EGULP.param.3")
     elif cmd.options.CHARGE_WILMER:
         try:
-            os.makedirs("%s/%s/%s"%(local_dir, basefile, "WILMER_QEQ"))
+            os.makedirs(os.path.join(local_dir, basefile, "WILMER_QEQ"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = "%s/%s/%s"%(local_dir, basefile, "WILMER_QEQ")
+        submit_dir = os.path.join(local_dir, basefile, "WILMER_QEQ")
     elif cmd.options.CHARGE_UFF:
         try:
-            os.makedirs("%s/%s/%s"%(local_dir, basefile, "UFF_QEQ"))
+            os.makedirs(os.path.join(local_dir, basefile, "UFF_QEQ"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = "%s/%s/%s"%(local_dir, basefile, "UFF_QEQ")
+        submit_dir = os.path.join(local_dir, basefile, "UFF_QEQ")
 
     else:
         try:
-            os.makedirs("%s/%s"%(local_dir, basefile))
+            os.makedirs(os.path.join(local_dir, basefile, "REPEAT"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = "%s/%s"%(local_dir, basefile)
+        submit_dir = os.path.join(local_dir, basefile, "REPEAT") 
     return submit_dir
 
 def main():
@@ -357,9 +359,12 @@ def main():
     # create the zipper script
     if not any([cmd.options.CHARGE_EGULP_3, cmd.options.CHARGE_WILMER,
         cmd.options.CHARGE_ZERO, cmd.options.CHARGE_UFF]):
-        zipper_chg_set(submit_dir)
+        zipname = os.path.join(submit_dir, '.'.join(submit_dir.split('/')[-2:]))
+        zipper_fap_cif(zipname)
+        zipper_chg_set(zipname)
     else:
-        zipper_fap_cif(submit_dir)
+        zipname = os.path.join(submit_dir, '.'.join(submit_dir.split('/')[-2:]))
+        zipper_fap_cif(zipname)
 
     for line in filestream:
         os.chdir("%s"%(submit_dir))
