@@ -21,14 +21,14 @@ gaussian = False
 # Location of the csv file containing all the MOFs to select from
 csv_file = 
 # Location of the sql file containing all the MOFs functional group records
-sql_file = cusql.sqlout
+sql_file = 
 # Metals to include in the set
-metals = Cu
+metals = 
 # Topologies to include in the set
-topologies = pcu 
+topologies = 
 # Request that the list of MOFs contain exclusively these functional groups.
 # Each MOF will contain ONLY one functional group listed here (dataset: [True])
-fnl_include = H,F,Cl,Br,I
+fnl_include = 
 # Request the list of MOFs contain these functional groups.  They can be paired
 # with other functional groups which are not in the list but not in the
 # exclude list (dataset: [True])
