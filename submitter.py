@@ -149,7 +149,7 @@ class CommandLine(object):
 
 def faps_sub():
     line = \
-"""!/bin/bash
+"""#!/bin/bash
 faps_dir="/home/pboyd/codes_in_development/faps"
 
 for dir in `ls -d -- */`; do
@@ -166,7 +166,7 @@ done"""
 
 def zipper_chg_set(basename):
     line = \
-"""!/bin/bash
+"""#!/bin/bash
 zipname="%s.zip"
 read -a dirs <<< `ls -d -- */`
 for dir in ${dirs[@]}; do
@@ -191,7 +191,7 @@ done
 
 def zipper_fap_cif(basename):
     line = \
-"""!/bin/bash
+"""#!/bin/bash
 zipname="%s.zip"
 read -a dirs <<< `ls -d -- */`
 zip $zipname faps_sub.sh

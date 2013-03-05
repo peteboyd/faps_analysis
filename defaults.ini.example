@@ -6,6 +6,8 @@ directory =
 ignore_list = 
 # Combine data from multiple csvs
 combine =
+# Report the number of grid points in the output .csv file
+report_ngrid = False
 # Request a report from calculated data
 report = False
 # Request a report on a list of MOFs
