@@ -1029,6 +1029,18 @@ class Extract(object):
             dic.setdefault(arg, 0)
             dic[arg] += 1
 
+    def _grid_points(self, mofname):
+        """Determine the maximum number of grid points needed for the esp."""
+        # have to source the correct file.
+        mofname = clean(mofname)
+        dirmof = os.path.join(self.options.lookup, mofname+'.out.cif') 
+        ngrid = -1
+        from_cif = CifFile(dirmof)
+        ngrid = GrabGridPoints(from_cif.cell,
+                               from_cif.atom_symbols,
+                               from_cif.cart_coordinates)
+        return ngrid
+
     def _analyse_data(self):
         for mof, info in self.mofs.items():
             met, org1, org2, top, junk = parse_mof_data(mof) 
@@ -1144,7 +1156,11 @@ class Extract(object):
         header = "MOFname,functional_group1,functional_group2," +\
                 "mof_occur,metal_occur,org1_occur,org2_occur," +\
                 "org_pair_occur,fnl1_occur,fnl2_occur," +\
-                "fnl_pair_occur\n"
+                "fnl_pair_occur"
+
+        if self.options.report_ngrid:
+            header += ",ngrid"
+        header += "\n"
         outstream.writelines(header)
         for mof, vals in self.mofs.items():
             met, org1, org2, top, fnl = parse_mof_data(mof)
@@ -1179,10 +1195,14 @@ class Extract(object):
 
             mof_abbrev = "str_m%i_o%i_o%i_%s"%(met(),org1(),org2(),top())
             mof_occur = self.full_mof_count[mof_abbrev]
-            outstream.writelines("%s,%s,%s,%i,%i,%i,%i,%i,%i,%i,%i\n"
+            line = ("%s,%s,%s,%i,%i,%i,%i,%i,%i,%i,%i"
                     %(mof,fnl1,fnl2,mof_occur,met_occur,org1_occur,
                         org2_occur,org_pair_occur,fnl1_occur,fnl2_occur,
                         fnl_pair_occur))
+            if self.optoins.report_ngrid:
+                line += ",%i"%(self._grid_points(mof))
+            line += "\n"
+            outstream.writelines(line)
         outstream.close()
         info("Done.")
 
