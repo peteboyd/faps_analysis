@@ -752,7 +752,7 @@ class GrabNewData(object):
         count = 0
         # make sure there's no overwriting, goes up to 99
         filename = create_csv_filename(basename)
-        info("Writing report to %s.csv..."%(filename))
+        info("Writing report to %s.csv..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
         if self.extended:
             header = "MOFname,mmol/g,Functional_grp1," +\
@@ -955,9 +955,11 @@ class JobHandler(object):
         """
         data = GrabNewData(self.options, self.mofs)
         data.grab_data()
-        # temporary generate file name
-        filename = '.'.join([clean(self.options.csv_file), 
-                             os.path.basename(self.options.directory)])
+        # first strip the .csv file of all pre_defined directories
+        basename = clean(os.path.basename(self.options.csv_file))
+        # then create the base file name
+        filename = '.'.join([basename,
+                         os.path.basename(self.options.directory)])
         data.write_data(filename)
 
     def generate_top_structures(self):
