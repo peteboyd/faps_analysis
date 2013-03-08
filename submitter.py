@@ -138,7 +138,7 @@ class CommandLine(object):
                           help=".csv file containing all the MOF names for submission.")
         parser.add_option("-d", "--dir", action="store", type="string",
                           dest="lookup_dir", 
-                          default="/shared_scratch/pboyd/OUTCIF/FinalCif",
+                          default="/shared_scratch/tdaff/GROIN_20130226/FinalCif",
                           help="Directory containing all the .cif files to "+
                           "copy over to the submission directory")
         (local_options, local_args) = parser.parse_args()
@@ -211,7 +211,8 @@ def reset_charges_to_zero(cif_file):
     """Reset all the charges reported in a faps-cif file to zero."""
     cifstream = open(cif_file, "r")
     site_loop = "_atom_site_label"
-    charge_loop = "_atom_type_parital_charge"
+    charge_loop = "_atom_type_partial_charge"
+    charge_loop2 = "_atom_type_parital_charge"
     check, scan, read = False, False, False
     lines = ""
     count = 0
@@ -235,7 +236,7 @@ def reset_charges_to_zero(cif_file):
             if "_" == line[0]:
                 lines += line + "\n"
                 count += 1
-                if charge_loop in line:
+                if charge_loop in line or charge_loop2 in line:
                     charge_ind = count
             else:
                 scan = False

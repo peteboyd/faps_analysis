@@ -157,7 +157,7 @@ class Options(object):
         # known booleans
         if key == 'report' or key == 'extract' or key == 'dataset' or\
                 key == 'top_ranked' or key == 'random' or \
-                key == 'gaussian':
+                key == 'gaussian' or key == 'report_ngrid':
             try:
                 val = self.job.getboolean(section, key)
             except ValueError:
