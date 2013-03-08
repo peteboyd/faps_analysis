@@ -955,7 +955,10 @@ class JobHandler(object):
         """
         data = GrabNewData(self.options, self.mofs)
         data.grab_data()
-        data.write_data()
+        # temporary generate file name
+        filename = '.'.join([clean(self.options.csv_file), 
+                             os.path.basename(self.options.directory)])
+        data.write_data(filename)
 
     def generate_top_structures(self):
         sel = Selector(self.options, self.mofs)
@@ -1199,7 +1202,7 @@ class Extract(object):
                     %(mof,fnl1,fnl2,mof_occur,met_occur,org1_occur,
                         org2_occur,org_pair_occur,fnl1_occur,fnl2_occur,
                         fnl_pair_occur))
-            if self.optoins.report_ngrid:
+            if self.options.report_ngrid:
                 line += ",%i"%(self._grid_points(mof))
             line += "\n"
             outstream.writelines(line)
