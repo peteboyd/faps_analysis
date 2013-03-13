@@ -407,22 +407,49 @@ class Selector(object):
                                   self.options.max_gridpoints if
                                   self.options.max_gridpoints is not 
                                   None else True))
-                    if ngrid_test:
+                    if self.options.uptake_cutoff:
+                        # grab the uptake from the original dictionary.
+                        ads = self.mof_dic[mof]['mmol/g']
+                        uptake = True if (ads >= self.options.uptake_cutoff
+                                else False)
+                    else:
+                        uptake = True
+                    if ngrid_test and uptake:
                         groups = self.mof_dic[mof]['functional_groups'].keys()
                         dataset.setdefault(tuple(groups), []).append(mof)
-            for key, value in dataset.items():
-                dataset[key] = value[:self.options.functional_max]
+
+            # if uptake cutoff is requested, then keep all above the
+            # cutoff, otherwise respect the functional_max parameter
+            if not self.options.uptake_cutoff:
+                for key, value in dataset.items():
+                    dataset[key] = value[:self.options.functional_max]
         else:
             ranked_list = self.rank_by_uptake(moflist)
-            for mof in ranked_list[:self.options.total_mofs]:
+            rankcount = 0
+            for mof in ranked_list:
+                rankcount += 1
                 groups = self.mof_dic[mof]['functional_groups'].keys()
                 ngrid = self.grid_points(mof, self.options.max_gridpoints)
                 ngrid_test = (ngrid > 0 and (ngrid <= 
                               self.options.max_gridpoints if
                               self.options.max_gridpoints 
                               is not None else True))
-                if ngrid_test:
+                # uptake_cutoff will override the max number of mofs set
+                # in the input, this requires two booleans, max and uptake
+                # to ensure the final dataset is correct.
+                if self.options.uptake_cutoff:
+                    # grab the uptake from the original dictionary.
+                    ads = self.mof_dic[mof]['mmol/g']
+                    uptake = True if (ads >= self.options.uptake_cutoff)\
+                             else False
+                    max = False
+                else:
+                    uptake = True
+                    max = False if (rankcount <= self.options.total_mofs)\
+                            else True 
+                if ngrid_test and uptake and not max:
                     dataset.setdefault(tuple(groups), []).append(mof)
+
         self.write_dataset(dataset)
 
     def rank_by_uptake(self, mof_list):
