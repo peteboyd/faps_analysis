@@ -53,5 +53,8 @@ organic_max =
 metal_max =
 # maximum number of each topology to include in the dataset (default determined by total_mofs)
 topology_max =
+# set a value for the uptake cutoff when building a dataset 
+# (currently only works for top_ranked)
+uptake_cutoff = 0.0
 
-# vim:ft=dosini:set paste:
+# vim:ft=dosini

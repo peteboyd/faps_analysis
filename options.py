@@ -170,6 +170,12 @@ class Options(object):
                 val = self.job.getint(section, key)
             except ValueError:
                 val = 0
+        # known floats
+        elif key == 'uptake_cutoff':
+            try:
+                val = self.job.getfloat(section, key)
+            except ValueError:
+                val = 0.
         # known lists
         elif key == 'topologies' or key == 'fnl_include' or \
             key == 'fnl_partial' or key == 'fnl_exclude' or \
