@@ -410,8 +410,8 @@ class Selector(object):
                     if self.options.uptake_cutoff:
                         # grab the uptake from the original dictionary.
                         ads = self.mof_dic[mof]['mmol/g']
-                        uptake = True if (ads >= self.options.uptake_cutoff
-                                else False)
+                        uptake = True if (ads >= self.options.uptake_cutoff)\
+                                else False
                     else:
                         uptake = True
                     if ngrid_test and uptake:
