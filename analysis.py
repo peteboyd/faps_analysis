@@ -1399,6 +1399,8 @@ def create_csv_filename(basename, extension=".csv"):
     return filename
 
 def clean(name):
+    if name.startswith('./run_x'):
+        name = name[10:]
     if name.endswith('.cif'):
         name = name[:-4]
     elif name.endswith('.niss'):
