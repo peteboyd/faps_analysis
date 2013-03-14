@@ -127,14 +127,19 @@ class CSV(dict):
                     " the uptake will be reported as 0.0 mmol/g")
         burn = filestream.readline()
         for line in filestream:
-            line = line.lstrip("#").split(",")
-            mofname = line[mofind].strip()
-            mofname = clean(mofname)
-            try:
-                uptake = line[uptind]
-            except UnboundLocalError:
-                uptake = 0.
-            self.setdefault(mofname, {})["mmol/g"] = float(uptake)
+            line = line.strip()
+            if line:
+                line = line.lstrip("#").split(",")
+                mofname = line[mofind].strip()
+                mofname = clean(mofname)
+                try:
+                    uptake = line[uptind]
+                except UnboundLocalError:
+                    uptake = 0.
+                except IndexError:
+                    print line
+                    sys.exit()
+                self.setdefault(mofname, {})["mmol/g"] = float(uptake)
         filestream.close()
 
 
@@ -217,7 +222,7 @@ class Selector(object):
         "Zr" : (7,),
         "In" : (8, 11),
         "V" : (9,),
-        "Ba" : (11,),
+        "Ba" : (10,),
         "Ni" : (12,)
         }
 
@@ -298,7 +303,7 @@ class Selector(object):
                    if not metind in [ind for sublist in 
                                         self.metal_indices.values()
                                         for ind in sublist]:
-                       error("ERROR: metal index %i is not in the database!"
+                       error("Metal index %i is not in the database!"
                                %metind)
                        sys.exit(1)
                    self.metalind.append(metind)
