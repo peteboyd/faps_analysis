@@ -136,9 +136,6 @@ class CSV(dict):
                     uptake = line[uptind]
                 except UnboundLocalError:
                     uptake = 0.
-                except IndexError:
-                    print line
-                    sys.exit()
                 self.setdefault(mofname, {})["mmol/g"] = float(uptake)
         filestream.close()
 
@@ -173,9 +170,9 @@ class FunctionalGroups(dict):
             # check if the entry already exists!
             if self._check_duplicate(mof):
                 if self[mof] == dic:
-                    pass
                     # duplicate
                     debug("Duplicate found %s"%(mof))
+                    #pass
                 else:
                     warning("duplicate found for %s"%(mof) +
                             " but with different functionalization!")
@@ -401,13 +398,15 @@ class Selector(object):
         """
         dataset = {}
         moflist = self._gen_moflist()
+        info("Size of the list of MOFs to sample from: %i"%(len(moflist)))
+        _used_mofs = []
         if self.options.fnl_include or self.options.fnl_partial:
             for group in self.options.fnl_include + self.options.fnl_partial:
                 # obtain list of mofs containing group,
                 partial_list = self.isolate_group(moflist, group)
                 ranked_list = self.rank_by_uptake(partial_list)
                 for mof in ranked_list:
-                    ngrid = self.grid_points(mof, self.options.max_gridpoints)
+                    ngrid = self.grid_points(mof)
                     ngrid_test = (ngrid > 0 and (ngrid <= 
                                   self.options.max_gridpoints if
                                   self.options.max_gridpoints is not 
@@ -419,9 +418,10 @@ class Selector(object):
                                 else False
                     else:
                         uptake = True
-                    if ngrid_test and uptake:
+                    if ngrid_test and uptake and mof not in _used_mofs:
                         groups = self.mof_dic[mof]['functional_groups'].keys()
                         dataset.setdefault(tuple(groups), []).append(mof)
+                        _used_mofs.append(mof)
 
             # if uptake cutoff is requested, then keep all above the
             # cutoff, otherwise respect the functional_max parameter
@@ -434,7 +434,7 @@ class Selector(object):
             for mof in ranked_list:
                 rankcount += 1
                 groups = self.mof_dic[mof]['functional_groups'].keys()
-                ngrid = self.grid_points(mof, self.options.max_gridpoints)
+                ngrid = self.grid_points(mof)
                 ngrid_test = (ngrid > 0 and (ngrid <= 
                               self.options.max_gridpoints if
                               self.options.max_gridpoints 
@@ -452,8 +452,9 @@ class Selector(object):
                     uptake = True
                     max = False if (rankcount <= self.options.total_mofs)\
                             else True 
-                if ngrid_test and uptake and not max:
+                if ngrid_test and uptake and not max and mof not in _used_mofs:
                     dataset.setdefault(tuple(groups), []).append(mof)
+                    _used_mofs.append(mof)
 
         self.write_dataset(dataset)
 
@@ -659,7 +660,7 @@ class Selector(object):
                 basename += "_%s"%top
         count = 0
         filename = create_csv_filename(basename) 
-        info("Writing dataset to %s.csv..."%(filename))
+        info("Writing dataset to %s.csv ..."%(filename))
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
         if self.options.max_gridpoints is not None:
@@ -784,7 +785,7 @@ class GrabNewData(object):
         count = 0
         # make sure there's no overwriting, goes up to 99
         filename = create_csv_filename(basename)
-        info("Writing report to %s.csv..."%(os.path.basename(filename)))
+        info("Writing report to %s.csv ..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
         if self.extended:
             header = "MOFname,mmol/g,Functional_grp1," +\
@@ -1361,7 +1362,7 @@ def pair_mofs_fnl(mof, fnl):
 
         except KeyError:
             mof[name]["functional_groups"] = {False:[], None:[]}
-            #warning("could not find data for %s"%name)
+            debug("could not find data for %s"%name)
     del fnl
 
 def write_csv(basename, dic):
@@ -1410,6 +1411,8 @@ def clean(name):
         name = name[:-4]
     elif name.endswith('.niss'):
         name = name[:-5]
+    elif name.endswith('.out-CO2.csv'):
+        name = name[:-12]
     elif name.endswith('-CO2.csv'):
         name = name[:-8]
     elif name.endswith('.flog'):
