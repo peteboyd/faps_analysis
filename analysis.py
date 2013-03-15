@@ -406,11 +406,16 @@ class Selector(object):
                 partial_list = self.isolate_group(moflist, group)
                 ranked_list = self.rank_by_uptake(partial_list)
                 for mof in ranked_list:
-                    ngrid = self.grid_points(mof)
-                    ngrid_test = (ngrid > 0 and (ngrid <= 
-                                  self.options.max_gridpoints if
-                                  self.options.max_gridpoints is not 
-                                  None else True))
+                    if self.options.max_gridpoints:
+                        try:
+                            ngrid = self.mof_dic[mof]['ngrid']
+                        except KeyError:
+                            ngrid = self.grid_points(mof)
+                            self.mof_dic[mof]['ngrid'] = ngrid
+                        ngrid_test = (ngrid > 0 and (ngrid <= 
+                                  self.options.max_gridpoints))
+                    else:
+                        ngrid = True
                     if self.options.uptake_cutoff:
                         # grab the uptake from the original dictionary.
                         ads = self.mof_dic[mof]['mmol/g']
@@ -434,11 +439,16 @@ class Selector(object):
             for mof in ranked_list:
                 rankcount += 1
                 groups = self.mof_dic[mof]['functional_groups'].keys()
-                ngrid = self.grid_points(mof)
-                ngrid_test = (ngrid > 0 and (ngrid <= 
-                              self.options.max_gridpoints if
-                              self.options.max_gridpoints 
-                              is not None else True))
+                if self.options.max_gridpoints:
+                    try:
+                        ngrid = self.mof_dic[mof]['ngrid']
+                    except KeyError:
+                        ngrid = self.grid_points(mof)
+                        self.mof_dic[mof]['ngrid'] = ngrid
+                    ngrid_test = (ngrid > 0 and (ngrid <= 
+                              self.options.max_gridpoints))
+                else:
+                    ngrid_test = True
                 # uptake_cutoff will override the max number of mofs set
                 # in the input, this requires two booleans, max and uptake
                 # to ensure the final dataset is correct.
@@ -527,9 +537,16 @@ class Selector(object):
                 upt_wght = self.weight_by_gaussian(uptake)
             else:
                 upt_wght = True
-            ngrid = self.grid_points(mof)
-            ngrid_test = (ngrid > 0 and (ngrid <= self.options.max_gridpoints
-                         if self.options.max_gridpoints is not None else True))
+            if self.options.max_gridpoints:
+                try:
+                    ngrid = self.mof_dic[mof]['ngrid']
+                except KeyError:
+                    ngrid = self.grid_points(mof)
+                    self.mof_dic[mof]['ngrid'] = ngrid
+                ngrid_test = (ngrid > 0 and 
+                    (ngrid <= self.options.max_gridpoints))
+            else:
+                ngrid_test = True
             # check to see if only the weighted uptake failed.
             # If so, put the mof back in the pool for selection later..
             # I did this because the lists are not completing.
@@ -567,7 +584,6 @@ class Selector(object):
                                                  top())
                 # append to list
                 dataset.setdefault(tuple((fnl_grp1, fnl_grp2)), []).append(mof)
-                self.mof_dic[mof]['ngrid'] = ngrid
                 mofcount += 1
             if mofcount >= self.options.total_mofs:
                 done = True
@@ -633,13 +649,11 @@ class Selector(object):
         mofname = clean(mofname)
         dirmof = os.path.join(self.options.lookup, mofname+'.out.cif') 
         ngrid = -1
-        if os.path.isfile(dirmof) and self.options.max_gridpoints is not None:
+        if os.path.isfile(dirmof):
             from_cif = CifFile(dirmof)
             ngrid = GrabGridPoints(from_cif.cell,
                                    from_cif.atom_symbols,
                                    from_cif.cart_coordinates)
-        elif self.options.max_gridpoints is None:
-            ngrid = 1
         return ngrid 
 
     def write_dataset(self, dataset):
@@ -663,7 +677,8 @@ class Selector(object):
         info("Writing dataset to %s.csv ..."%(filename))
         outstream = open(filename+".csv", "w")
         header="MOFname,mmol/g,functional_group1,functional_group2"
-        if self.options.max_gridpoints is not None:
+        if (self.options.max_gridpoints is not None) or\
+                (self.options.report_ngrid):
             header += ",ngrid\n"
         else:
             header += "\n"
@@ -682,11 +697,12 @@ class Selector(object):
                 except KeyError:
                     uptake = 0.
                 line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
-                if self.options.max_gridpoints is not None:
+                if (self.options.max_gridpoints is not None) or \
+                        (self.options.report_ngrid):
                     try:
                         ngrid = self.mof_dic[mof]['ngrid']
                     except KeyError:
-                        ngrid = 0
+                        ngrid = self.grid_points(mof)
                     line += ",%i\n"%(ngrid)
                 else:
                     line += "\n"
@@ -1124,9 +1140,9 @@ class Extract(object):
         info("Writing %s.csv"%fnlpfile)
         files.append("%s.csv"%fnlpfile)
         outstream = open(fnlpfile + ".csv", "w")
-        outstream.writelines("#functional_group1,functional_group2,count\n")
+        outstream.writelines("#functional_groups,count\n")
         for pair, count in self.fnl_pair.items():
-            outstream.writelines("%s,%s,%i\n"%(pair[0], pair[1], count))
+            outstream.writelines("(%s %s),%i\n"%(pair[0], pair[1], count))
         outstream.close()
         # third file prints out individual organic group stats
         orgfile = basename + ".org"
@@ -1144,9 +1160,9 @@ class Extract(object):
         info("Writing %s.csv"%orgpfile)
         files.append("%s.csv"%orgpfile)
         outstream = open(orgpfile + ".csv", "w")
-        outstream.writelines("#organic_index1,organic_index2,count\n")
+        outstream.writelines("#organic_indices,count\n")
         for orgs, count in self.org_pair_count.items():
-            outstream.writelines("%i,%i,%i\n"%(orgs[0], orgs[1], count))
+            outstream.writelines("(o%i o%i),%i\n"%(orgs[0], orgs[1], count))
         outstream.close()
         # fifth file prints out metal index stats
         metfile = basename + ".metal"
