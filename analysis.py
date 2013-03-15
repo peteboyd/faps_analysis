@@ -803,45 +803,47 @@ class GrabNewData(object):
         filename = create_csv_filename(basename)
         info("Writing report to %s.csv ..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
+        header = "MOFname,mmol/g,Functional_grp1,Functional_grp2"
         if self.extended:
-            header = "MOFname,mmol/g,Functional_grp1," +\
-                    "Functional_grp2,grp1_replacements,grp2_replacements\n"
-        else:
-            header = "MOFname,mmol/g,Functional_grp1," +\
-                    "Functional_grp2\n"
-
+            header += ",grp1_replacements,grp2_replacements"
+        if self.options.report_ngrid:
+            header += ",ngrid"
+        header += "\n"
         outstream.writelines(header)
         for mof in self.mofs.keys():
             new_uptake = self.mofs[mof]['new_uptake']
             try:
                 replaced_groups = self.mofs[mof]['functional_groups']
             except KeyError:
-                replaced_groups = {"None1": [], "None2": []}
+                replaced_groups = {False:[], None:[]}
             names = replaced_groups.keys()
             names.sort()
-            if len(names) == 2:
-                fnl_grp1 = names[0]
-                fnl_grp2 = names[1]
-                rep_1 = " ".join(replaced_groups[fnl_grp1])
-                rep_2 = " ".join(replaced_groups[fnl_grp2])
-
-            elif len(names) == 1:
-                fnl_grp1 = names[0]
-                fnl_grp2 = None
-                rep_1 = " ".join(replaced_groups[fnl_grp1])
-                rep_2 = ["N/A"]
-
+            fnl_grp1 = names[0]
+            fnl_grp2 = names[1]
+            rep_1 = " ".join(replaced_groups[fnl_grp1])
+            rep_2 = " ".join(replaced_groups[fnl_grp2])
+            line = "%s,%f,%s,%s"%(mof, new_uptake, fnl_grp1, fnl_grp2)
             if self.extended:
-                fmt = "%s,%f,%s,%s,%s,%s\n"
-                line = fmt%(mof, new_uptake,
-                            fnl_grp1, fnl_grp2, rep_1, rep_2)
-            else:
-                fmt = "%s,%f,%s,%s\n"
-                line = fmt%(mof, new_uptake, fnl_grp1,
-                            fnl_grp2)
+                line += "%s,%s"%(rep_1, rep_2)
+            if self.options.report_ngrid:
+                line += ",%i"%(grid_points(mof))
+            line += "\n"
             outstream.writelines(line)
         info("Done.")
         outstream.close()
+
+    def grid_points(self, mofname):
+        """Determine the maximum number of grid points needed for the esp."""
+        # have to source the correct file.
+        mofname = clean(mofname)
+        dirmof = os.path.join(self.options.lookup, mofname+'.out.cif') 
+        ngrid = -1
+        if os.path.isfile(dirmof):
+            from_cif = CifFile(dirmof)
+            ngrid = GrabGridPoints(from_cif.cell,
+                                   from_cif.atom_symbols,
+                                   from_cif.cart_coordinates)
+        return ngrid 
 
 
 class GrabGridPoints(int):
