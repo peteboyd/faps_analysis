@@ -1101,8 +1101,8 @@ class Extract(object):
         for mof, info in self.mofs.items():
             met, org1, org2, top, junk = parse_mof_data(mof) 
             fnls = info['functional_groups'].keys()
-            fnl_pair = sorted(set([i for i in fnls if i]))
-            org_pair = sorted(set([org1(), org2()]))
+            fnl_pair = sorted([i for i in fnls])
+            org_pair = sorted([org1(), org2()])
             [self._increment_counts(self.fnl_count, i) for i in 
                     fnl_pair]
             if len(fnl_pair) > 1:
