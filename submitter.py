@@ -127,6 +127,34 @@ optim_cell = False
 optim_h = False
 quiet = True
 """
+faps_job_egulp_param4dt2="""find_maxima = False 
+guests = CO2
+mc_eq_steps = 2000000
+mc_prod_steps = 10000000
+mc_numguests_freq = 50000
+mc_probability_plot = False 
+mc_temperature = 298.0
+mc_pressure = 0.15
+charge_method = egulp
+qeq_parameters = 
+    Cu    5.429000      3.468000
+    Zn    3.701000      4.463000
+     C    5.431000      5.857000
+     N    6.688000      6.622000
+     O    8.714000      8.568000
+     F    6.416000     11.131000
+    Cl    5.821000      7.273000
+    Br    5.692000      8.760000
+     I    5.431000      5.720000
+     S    3.369000      5.092000
+    801  10.597000      9.744000
+    802   7.968000     10.323000
+no_dft = True
+optim_all = False
+optim_cell = False 
+optim_h = False
+quiet = True
+"""
 
 class CommandLine(object):
     """Parse command line options and communicate directives to the program."""
@@ -159,6 +187,10 @@ class CommandLine(object):
                           dest="CHARGE_EGULP_4d",
                           help="Create submission directories with EGULP "+
                                "parameter set 4d.")
+        parser.add_option("--egulp4dt2", action="store_true",
+                          dest="CHARGE_EGULP_4dt2",
+                          help="Create submission directories with EGULP "+
+                               "parameter set 4d.t2.")
         parser.add_option("-U", "--uff", action="store_true", 
                           dest="CHARGE_UFF",
                           help="Create submission directories where the MOFs "+
@@ -362,6 +394,12 @@ def gen_submit_dir(cmd, local_dir, basefile):
         except OSError:
             print("Directory already exists!")
         submit_dir = os.path.join(local_dir, basefile, "EGULP.param.4d")
+    elif cmd.options.CHARGE_EGULP_4dt2:
+        try:
+            os.makedirs(os.path.join(local_dir, basefile, "EGULP.param.4d.t2"))
+        except OSError:
+            print("Directory already exists!")
+        submit_dir = os.path.join(local_dir, basefile, "EGULP.param.4d.t2")
     elif cmd.options.CHARGE_WILMER:
         try:
             os.makedirs(os.path.join(local_dir, basefile, "WILMER_QEQ"))
@@ -438,6 +476,8 @@ def main():
                 faplines = faps_job_egulp_param3
             elif cmd.options.CHARGE_EGULP_4d:
                 faplines = faps_job_egulp_param4d
+            elif cmd.options.CHARGE_EGULP_4dt2:
+                faplines = faps_job_egulp_param4dt2
             elif cmd.options.CHARGE_WILMER:
                 faplines = faps_job_noq_gcmc
                 wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
