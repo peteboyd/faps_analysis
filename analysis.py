@@ -826,7 +826,7 @@ class GrabNewData(object):
             if self.extended:
                 line += "%s,%s"%(rep_1, rep_2)
             if self.options.report_ngrid:
-                line += ",%i"%(grid_points(mof))
+                line += ",%i"%(self.grid_points(mof))
             line += "\n"
             outstream.writelines(line)
         info("Done.")
