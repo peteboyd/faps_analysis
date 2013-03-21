@@ -156,7 +156,7 @@ optim_h = False
 quiet = True
 """
 
-faps_job_egulp_param5="""find_maxima = False 
+faps_job_egulp_param4dt3="""find_maxima = False 
 guests = CO2
 mc_eq_steps = 2000000
 mc_prod_steps = 10000000
@@ -222,9 +222,9 @@ class CommandLine(object):
                           help="Create submission directories with EGULP "+
                                "parameter set 4d.t2.")
         parser.add_option("--egulp5", action="store_true",
-                          dest="CHARGE_EGULP_5",
+                          dest="CHARGE_EGULP_4dt3",
                           help="Create submission directories with EGULP "+
-                               "parameter set 5.")
+                               "parameter set 4dt3.")
         parser.add_option("-U", "--uff", action="store_true", 
                           dest="CHARGE_UFF",
                           help="Create submission directories where the MOFs "+
@@ -434,12 +434,12 @@ def gen_submit_dir(cmd, local_dir, basefile):
         except OSError:
             print("Directory already exists!")
         submit_dir = os.path.join(local_dir, basefile, "EGULP.param.4d.t2")
-    elif cmd.options.CHARGE_EGULP_5:
+    elif cmd.options.CHARGE_EGULP_4dt3:
         try:
-            os.makedirs(os.path.join(local_dir, basefile, "EGULP.param.5"))
+            os.makedirs(os.path.join(local_dir, basefile, "EGULP.param.4d.t3"))
         except OSError:
             print("Directory already exists!")
-        submit_dir = os.path.join(local_dir, basefile, "EGULP.param.5")
+        submit_dir = os.path.join(local_dir, basefile, "EGULP.param.4d.t3")
     elif cmd.options.CHARGE_WILMER:
         try:
             os.makedirs(os.path.join(local_dir, basefile, "WILMER_QEQ"))
@@ -518,8 +518,8 @@ def main():
                 faplines = faps_job_egulp_param4d
             elif cmd.options.CHARGE_EGULP_4dt2:
                 faplines = faps_job_egulp_param4dt2
-            elif cmd.options.CHARGE_EGULP_5:
-                faplines = faps_job_egulp_param5
+            elif cmd.options.CHARGE_EGULP_4dt3:
+                faplines = faps_job_egulp_param4dt3
             elif cmd.options.CHARGE_WILMER:
                 faplines = faps_job_noq_gcmc
                 wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
