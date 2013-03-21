@@ -415,7 +415,7 @@ class Selector(object):
                         ngrid_test = (ngrid > 0 and (ngrid <= 
                                   self.options.max_gridpoints))
                     else:
-                        ngrid = True
+                        ngrid_test = True
                     if self.options.uptake_cutoff:
                         # grab the uptake from the original dictionary.
                         ads = self.mof_dic[mof]['mmol/g']
