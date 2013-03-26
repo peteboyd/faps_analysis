@@ -9,8 +9,9 @@ certain criteria.
 import os
 import sys
 import random
-from math import cos, sin, sqrt, pi, exp
+from math import cos, sin, sqrt, pi, exp, floor
 import numpy as np
+import scipy
 from scipy import stats
 from options import Options
 import subprocess
@@ -18,6 +19,9 @@ import zipfile
 import uuid
 import itertools
 from logging import info, debug, warning, error, critical
+sys.path.append("/home/pboyd/codes_in_development/faps")
+from faps import PyNiss, Structure, Atom, Cell, Guest, Symmetry 
+import pickle
 
 DEG2RAD = pi / 180.0
 ATOM_NUM = [
@@ -39,7 +43,8 @@ class CSV(dict):
     """
     def __init__(self, filename, _MOFNAME=True):
         self._columns = {"MOF":"MOFname", "uptake":"mmol/g",
-                      "temperature":"T/K", "pressure":"p/bar"}
+                      "temperature":"T/K", "pressure":"p/bar",
+                      "heat of adsorption":"hoa/kcal/mol"}
         self.filename = filename
         if not os.path.isfile(filename):
             error("Could not find the file: %s"%filename)
@@ -124,7 +129,13 @@ class CSV(dict):
         except ValueError:
             warning("the csv file %s does not have %s as a column"%
                     (self.filename, self._columns["uptake"]) +
-                    " the uptake will be reported as 0.0 mmol/g")
+                    " the qst will be reported as 0.0 kcal/mol")
+        try:
+            hoaind = self.headings.index(self._columns["heat of adsorption"])
+        except ValueError:
+            warning("the csv file %s does not have %s as a column"%
+                    (self.filename, self._columns["heat of adsorption"]) +
+                    " the qst will be reported as 0.0 kcal/mol")
         burn = filestream.readline()
         for line in filestream:
             line = line.strip()
@@ -137,6 +148,11 @@ class CSV(dict):
                 except UnboundLocalError:
                     uptake = 0.
                 self.setdefault(mofname, {})["mmol/g"] = float(uptake)
+                try:
+                    hoa = line[hoaind]
+                except UnboundLocalError:
+                    hoa = 0.
+                self.setdefault(mofname, {})["hoa"] = float(hoa)
         filestream.close()
 
 
@@ -676,7 +692,7 @@ class Selector(object):
         filename = create_csv_filename(basename) 
         info("Writing dataset to %s.csv ..."%(filename))
         outstream = open(filename+".csv", "w")
-        header="MOFname,mmol/g,functional_group1,functional_group2"
+        header="MOFname,mmol/g,hoa,functional_group1,functional_group2"
         if (self.options.max_gridpoints is not None) or\
                 (self.options.report_ngrid):
             header += ",ngrid\n"
@@ -696,7 +712,11 @@ class Selector(object):
                     uptake = self.mof_dic[mof]['mmol/g']
                 except KeyError:
                     uptake = 0.
-                line = "%s,%f,%s,%s"%(mof, uptake, groups[0], groups[1])
+                try:
+                    hoa = self.mof_dic[mof]['hoa']
+                except KeyError:
+                    hoa = 0.
+                line = "%s,%f,%f,%s,%s"%(mof, uptake, hoa, groups[0], groups[1])
                 if (self.options.max_gridpoints is not None) or \
                         (self.options.report_ngrid):
                     try:
@@ -783,15 +803,21 @@ class GrabNewData(object):
                     new_uptake = data.obtain_data("mmol/g",
                                                   temperature=temp,
                                                   pressure=press)
+                    new_hoa = data.obtain_data("heat of adsorption",
+                                               temperature=temp,
+                                               pressure=press)
                 else:
                     warning("could not find %s-CO2.csv"%(mof))
                     new_uptake = 0.
+                    new_hoa = 0.
                 os.chdir('..')
             else:
                 warning("could not find %s in the directory %s"%(
                         mof, self.basedir))
-                new_uptake = 0. 
+                new_uptake = 0.
+                new_hoa = 0.
             self.mofs[mof]['new_uptake'] = new_uptake
+            self.mofs[mof]['new_hoa'] = new_hoa
         os.chdir(self.options.job_dir)
 
     def write_data(self, filename="default.report.csv"):
@@ -803,7 +829,7 @@ class GrabNewData(object):
         filename = create_csv_filename(basename)
         info("Writing report to %s.csv ..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
-        header = "MOFname,mmol/g,Functional_grp1,Functional_grp2"
+        header = "MOFname,mmol/g,hoa,Functional_grp1,Functional_grp2"
         if self.extended:
             header += ",grp1_replacements,grp2_replacements"
         if self.options.report_ngrid:
@@ -812,6 +838,7 @@ class GrabNewData(object):
         outstream.writelines(header)
         for mof in self.mofs.keys():
             new_uptake = self.mofs[mof]['new_uptake']
+            new_hoa = self.mofs[mof]['new_hoa']
             try:
                 replaced_groups = self.mofs[mof]['functional_groups']
             except KeyError:
@@ -822,7 +849,8 @@ class GrabNewData(object):
             fnl_grp2 = names[1]
             rep_1 = " ".join(replaced_groups[fnl_grp1])
             rep_2 = " ".join(replaced_groups[fnl_grp2])
-            line = "%s,%f,%s,%s"%(mof, new_uptake, fnl_grp1, fnl_grp2)
+            line = "%s,%f,%f,%s,%s"%(mof, new_uptake, new_hoa, 
+                                     fnl_grp1, fnl_grp2)
             if self.extended:
                 line += "%s,%s"%(rep_1, rep_2)
             if self.options.report_ngrid:
@@ -939,7 +967,8 @@ class JobHandler(object):
     def _check_if_ok(self):
         if not self.options.combine and not self.options.cmd_opts.combine and\
                 not self.options.dataset and not self.options.report and \
-                not self.options.extract and not self.options.report:
+                not self.options.extract and not self.options.report and not \
+                self.options.comparison:
             error("no job type requested!")
             sys.exit(1)
 
@@ -968,6 +997,25 @@ class JobHandler(object):
         if self.options.extract:
             info("Extracting info from csv file %s"%(self.options.csv_file))
             self.extract_report()
+
+        elif self.options.comparison:
+            if not self.options.compare_csv_1 and not \
+                    self.options.compare_csv_2:
+                error("Please enter the two .csv files to compare in the "+
+                        "input file.")
+                sys.exit(1)
+            if not self.options.compare_location_1 and not \
+                    self.options.compare_location_2:
+                error("Please enter the location of the job runs for both "+
+                        "csv files.")
+                sys.exit(1)
+            if not self.options.sql_file:
+                error("no .sqlout file specified in the input")
+                sys.exit(1)
+            info("Comparing two .csv files %s, and %s"%(
+                os.path.basename(self.options.compare_csv_1), 
+                os.path.basename(self.options.compare_csv_2)))
+            self.run_comparison()
 
         elif self.options.dataset:
             if self.options.top_ranked:
@@ -998,6 +1046,13 @@ class JobHandler(object):
         sel = Selector(self.options, self.mofs)
         sel.trim_non_existing()
         sel.random_select()
+
+    def run_comparison(self):
+        """Run a comparison between two .csv files.. generally used for large
+        amounts of data."""
+        job = Comparison(self.options)
+        job.bin_data()
+        job.write_output_data()
 
     def write_report(self):
         """Write a report on some new uptake data located in 'directory' based
@@ -1031,31 +1086,52 @@ class JobHandler(object):
         for ind, csv in enumerate(csvs):
             for key, dic in csv.items():
                 uptake = dic.pop('mmol/g')
+                hoa = dic.pop('hoa')
                 dic['mmol/g-%s'%basenames[ind]] = uptake
+                dic['hoa-%s'%basenames[ind]] = hoa
                 merged.setdefault(key, {})
                 merged[key].update(dic)
-        # combine uptake columns
-        corr = [[] for i in range(len(basenames))]
+        # combine uptake columns and hoa columns
+        upt_corr = [[] for i in range(len(basenames))]
+        hoa_corr = [[] for i in range(len(basenames))]
         for mof, value in merged.items():
             if all(['mmol/g-%s'%i in value.keys() for i in basenames]):
                 if all([value['mmol/g-%s'%i] > 0. for i in basenames]):
-                    [corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
+                    [upt_corr[basenames.index(i)].append(value['mmol/g-%s'%i]) for 
                             i in basenames]
                 else:
                     warning("MOF %s not included in correlation calculations "%mof
                         + "because of 0 value for uptake")
+                if all([value['hoa-%s'%i] > 0. for i in basenames]):
+                    [hoa_corr[basenames.index(i)].append(value['hoa-%s'%i]) for 
+                            i in basenames]
+                else:
+                    warning("MOF %s not included in correlation calculations "%mof
+                        + "because of 0 value for heat of adsorption")
+
             else:
                 warning("MOF %s is not included in correlation calculations "%mof +
                     "because it couldn't be found in one or more csv files.")
-        for upt1, upt2 in itertools.combinations(corr, 2):
-            ind1 = corr.index(upt1)
-            ind2 = corr.index(upt2)
-            info("Correlation coefficients for %s, and %s:"%(
-                 basenames[ind1], basenames[ind2]))
-            rho, pval = stats.spearmanr(upt1, upt2)
-            info("Spearman rank: %7.5f"%rho)
-            pears, p2 = stats.pearsonr(upt1, upt2)
-            info("Pearson correlation: %7.5f"%pears)
+        for upt1, upt2 in itertools.combinations(upt_corr, 2):
+            if upt1 and upt2:
+                ind1 = upt_corr.index(upt1)
+                ind2 = upt_corr.index(upt2)
+                info("Uptake correlation coefficients for %s, and %s:"%(
+                     basenames[ind1], basenames[ind2]))
+                rho, pval = stats.spearmanr(upt1, upt2)
+                info("Spearman rank: %7.5f"%rho)
+                pears, p2 = stats.pearsonr(upt1, upt2)
+                info("Pearson correlation: %7.5f"%pears)
+        for hoa1, hoa2 in itertools.combinations(hoa_corr, 2):
+            if hoa1 and hoa2:
+                ind1 = hoa_corr.index(hoa1)
+                ind2 = hoa_corr.index(hoa2)
+                info("Hoa correlation coefficients for %s, and %s:"%(
+                     basenames[ind1], basenames[ind2]))
+                rho, pval = stats.spearmanr(hoa1, hoa2)
+                info("Spearman rank: %7.5f"%rho)
+                pears, p2 = stats.pearsonr(hoa1, hoa2)
+                info("Pearson correlation: %7.5f"%pears)
 
         names = {}
         [names.setdefault(i.split('.')[0], 0) for i in basenames]
@@ -1261,6 +1337,286 @@ class Extract(object):
             outstream.writelines(line)
         outstream.close()
         info("Done.")
+
+
+class Comparison(object):
+    """Compares two runs on a database with different charge set parameters.
+    The user defined value will be compared and binned by a user defined
+    deviation interval, For each interval the charges assigned to each
+    atom will be reported, as well as the population of functional groups and
+    building units.
+
+    """
+
+    def __init__(self, options):
+
+        self.options = options
+        self.mof_dic = {}
+        self.fnl_dic = FunctionalGroups(self.options.sql_file)
+        self._join_dictionaries()
+        self._determine_min_max()
+        self._init_bin_dics()
+
+    def _join_dictionaries(self):
+        mof_dic1 = CSV(self.options.compare_csv_1)
+        mof_dic2 = CSV(self.options.compare_csv_2)
+        for mof in mof_dic1.keys():
+            mof = clean(mof)
+            try:
+                mof_dic2[mof]
+                mofname = clean(mof)
+                self.mof_dic[mofname] = {}
+                # add the first entries
+                for key, val in mof_dic1[mof].items():
+                    self.mof_dic[mofname][key+".1"] = val
+                # add the second entries
+                for key, val in mof_dic2[mof].items():
+                    self.mof_dic[mofname][key+".2"] = val
+                mof_dic2.pop(mof)
+            except KeyError:
+                warning("No %s found in the file %s!"%(mof,
+                            self.options.compare_csv_2))
+                mof_dic1.pop(mof)
+        for key in mof_dic2.keys():
+            warning("No %s found in the file %s!"%(key, 
+                          self.options.compare_csv_1))
+        pair_mofs_fnl(self.mof_dic, self.fnl_dic)
+        del self.fnl_dic
+        del mof_dic1
+        del mof_dic2
+
+    def _determine_min_max(self):
+
+        self.min = 0
+        self.max = 0
+        for mof in self.mof_dic.keys():
+            diff = self._get_difference(mof)
+            if diff < self.min:
+                self.min = diff
+            if diff > self.max:
+                self.max = diff
+        info("Bin intervals: %3.5f"%((self.max - self.min)/
+            float(self.options.bin_interval)))
+
+    def _init_bin_dics(self):
+        self.atomic_charge_difference = {}
+        self.atomic_charge_1 = {}
+        self.atomic_charge_2 = {}
+        self.mofname_bin = {}
+        self.met_bin = {}
+        self.org_pair_bin = {}
+        self.org_bin = {}
+        self.fnl_pair_bin = {}
+        self.fnl_bin = {}
+        for i in range(self.options.bin_interval):
+            self.atomic_charge_difference.setdefault(i, {}) 
+            self.atomic_charge_1.setdefault(i, {})
+            self.atomic_charge_2.setdefault(i, {}) 
+            self.mofname_bin.setdefault(i, [])
+            self.met_bin.setdefault(i, {})
+            self.org_pair_bin.setdefault(i, {})
+            self.org_bin.setdefault(i, {})
+            self.fnl_pair_bin.setdefault(i, {})
+            self.fnl_bin.setdefault(i, {})
+
+    def bin_data(self):
+        self.mof_count = 0
+        for mof in self.mof_dic.keys():
+            if self._validate_data(mof):
+                self.mof_count += 1 
+                diff = self._get_difference(mof)
+                bin_num = self._determine_bin(diff)
+                charge_dict1 = self._get_charges(mof, 1)
+                charge_dict2 = self._get_charges(mof, 2)
+                for atom, (type1, charge1) in charge_dict1.items():
+                    try:
+                        (type2, charge2) = charge_dict2[atom]
+                        difference = (charge1 - charge2)
+                        # store the difference, and the charges for each atom
+                        # type in a separate dictionary
+                        self.atomic_charge_difference[bin_num].setdefault(type1,
+                            []).append(difference)
+                        self.atomic_charge_1[bin_num].setdefault(type1, 
+                            []).append(charge1)
+                        self.atomic_charge_2[bin_num].setdefault(type2, 
+                            []).append(charge2)
+                    except KeyError:
+                        warning("Could not find %s in the second charge set"%(atom))
+                met, o1, o2, top, junk = parse_mof_data(mof)
+                (fnl1, fnl2) = self.mof_dic[mof]["functional_groups"].keys()
+                #YEUCH, ugly stuff next
+                self.met_bin[bin_num].setdefault(met(), 0)
+                self.met_bin[bin_num][met()] += 1
+                self.mofname_bin[bin_num].append(mof)
+                opair = tuple(sorted([o1(), o2()]))
+                self.org_pair_bin[bin_num].setdefault(opair, 0)
+                self.org_pair_bin[bin_num][opair] += 1
+                self.org_bin[bin_num].setdefault(o1(), 0)
+                self.org_bin[bin_num].setdefault(o2(), 0)
+                if o1() == o2():
+                    self.org_bin[bin_num][o1()] += 1
+                else:
+                    self.org_bin[bin_num][o1()] += 1
+                    self.org_bin[bin_num][o2()] += 1
+                fpair = tuple(sorted([fnl1, fnl2]))
+                self.fnl_pair_bin[bin_num].setdefault(fpair, 0)
+                self.fnl_bin[bin_num].setdefault(fnl1, 0)
+                self.fnl_bin[bin_num].setdefault(fnl2, 0)
+                self.fnl_pair_bin[bin_num][fpair] += 1
+                self.fnl_bin[bin_num][fnl1] += 1
+                self.fnl_bin[bin_num][fnl2] += 1
+        del self.mof_dic
+
+    def write_output_data(self):
+        """This is ugly."""
+        # create directories in the current directory for:
+        # charge difference, charges of 1, charges of 2,
+        # mof list, functional, building units
+        info("Writing .csv files")
+        os.makedirs(os.path.join(self.options.job_dir, "charge_1"))
+        os.makedirs(os.path.join(self.options.job_dir, "charge_2"))
+        os.makedirs(os.path.join(self.options.job_dir, "charge_diff"))
+        os.makedirs(os.path.join(self.options.job_dir, "mof"))
+        os.makedirs(os.path.join(self.options.job_dir, "functional"))
+        os.makedirs(os.path.join(self.options.job_dir, "building_units"))
+        for bin_int in range(self.options.bin_interval):
+            #CHARGE 1
+            basepath = os.path.join(self.options.job_dir, "charge_1")
+            csvfile = open(os.path.join(basepath, "%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s,%s\n"%("Atom_type","mean_chg","stdev"))
+            for atomtype in self.atomic_charge_1[bin_int].keys():
+                mean_chge = scipy.mean(self.atomic_charge_1
+                                       [bin_int][atomtype])
+                stdev_chge = scipy.std(self.atomic_charge_1
+                                       [bin_int][atomtype])
+                csvfile.writelines("%s,%f,%f\n"%
+                        (atomtype, mean_chge, stdev_chge))
+            csvfile.close()
+            #CHARGE 2
+            basepath = os.path.join(self.options.job_dir, "charge_2")
+            csvfile = open(os.path.join(basepath, "%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s,%s\n"%("Atom_type","mean_chg","stdev"))
+            for atomtype in self.atomic_charge_2[bin_int].keys():
+                mean_chge = scipy.mean(self.atomic_charge_2
+                                       [bin_int][atomtype])
+                stdev_chge = scipy.std(self.atomic_charge_2
+                                       [bin_int][atomtype])
+                csvfile.writelines("%s,%f,%f\n"%
+                        (atomtype, mean_chge, stdev_chge))
+            csvfile.close()
+            #CHARGE DIFFERENCE
+            basepath = os.path.join(self.options.job_dir, "charge_diff")
+            csvfile = open(os.path.join(basepath, "%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s,%s\n"%("Atom_type","mean_diff","stdev"))
+            for atomtype in self.atomic_charge_2[bin_int].keys():
+                mean_chge = scipy.mean(self.atomic_charge_difference
+                                       [bin_int][atomtype])
+                stdev_chge = scipy.std(self.atomic_charge_difference
+                                       [bin_int][atomtype])
+                csvfile.writelines("%s,%f,%f\n"%
+                        (atomtype, mean_chge, stdev_chge))
+            csvfile.close()
+            #MOF STORAGE
+            basepath = os.path.join(self.options.job_dir, "mof")
+            csvfile = open(os.path.join(basepath, "%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,\n"%("MOFname"))
+            for mof in self.mofname_bin[bin_int]:
+                csvfile.writelines("%s,\n"%mof)
+            csvfile.close()
+            # FUNCTIONAL GROUPS
+            basepath = os.path.join(self.options.job_dir, "functional")
+            csvfile = open(os.path.join(basepath, "fnl_%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s\n"%("Functional_group","rep"))
+            for fnl,count in self.fnl_bin[bin_int].items():
+                percent = float(count) / float(self.mof_count)
+                csvfile.writelines("%s,%f\n"%(fnl,percent)) 
+            csvfile.close()
+            csvfile = open(os.path.join(basepath, "fnl_pair_%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s\n"%("Functional_pair","rep"))
+            for fnlpair, count in self.fnl_pair_bin[bin_int].items():
+                fnlpair = list(fnlpair)
+                percent = float(count) / float(self.mof_count)
+                for i in range(2):
+                    if not fnlpair[i]:
+                        fnlpair[i] = "None"
+                csvfile.writelines("%s,%f\n"%(" ".join(fnlpair),percent))
+            csvfile.close()
+            # BUILDING UNITS
+            basepath = os.path.join(self.options.job_dir, "building_units")
+            csvfile = open(os.path.join(basepath, "org_pair_%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s\n"%("Organic_pair","rep"))
+            for orgpair, count in self.org_pair_bin[bin_int].items():
+                percent = float(count) / float(self.mof_count)
+                orgpair = [str(i) for i in orgpair]
+                csvfile.writelines("%s,%f\n"%(" ".join(orgpair),percent))
+            csvfile.close()
+            csvfile = open(os.path.join(basepath, "org_%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s\n"%("Organic_ind","rep"))
+            for org, count in self.org_bin[bin_int].items():
+                percent = float(count) / float(self.mof_count)
+                csvfile.writelines("%i,%f\n"%(org,percent))
+            csvfile.close()
+            csvfile = open(os.path.join(basepath, "met_%i.csv"%(bin_int)),'w')
+            csvfile.writelines("%s,%s\n"%("Metal_ind","rep"))
+            for met, count in self.met_bin[bin_int].items():
+                percent = float(count) / float(self.mof_count)
+                csvfile.writelines("%i,%f\n"%(met,percent))
+            csvfile.close()
+
+    def _determine_bin(self, val):
+        interval = self.max - self.min
+        bin_freq = interval / float(self.options.bin_interval)
+        if val == self.max:
+            return (self.options.bin_interval - 1)
+        return int(floor((val - self.min)/bin_freq))
+
+    def _validate_data(self, mof):
+        try:
+            self.mof_dic[mof][self.options.comparison_value + '.1']
+            pass1 = True
+        except KeyError:
+            warning("No %s value for %s in the first csv file!"%(
+                self.options.comparison_value, mof))
+            pass1 = False
+        try:
+            self.mof_dic[mof][self.options.comparison_value + '.2']
+            pass2 = True
+        except KeyError:
+            warning("No %s value for %s in the second csv file!"%(
+                self.options.comparison_value, mof))
+            pass2 = False
+        return (pass1 and pass2)
+
+    def _get_difference(self, mof):
+        """Evaluate the difference between the desired value."""
+        return (self.mof_dic[mof][self.options.comparison_value + '.1'] -
+                self.mof_dic[mof][self.options.comparison_value + '.2'])
+
+    def _get_charges(self, mof, run=1):
+        """return the charges assigned to each atom in the MOF."""
+        if run == 1:
+            basedir = self.options.compare_location_1
+        elif run == 2:
+            basedir = self.options.compare_location_2
+        filename = self._locate(basedir, "%s.niss"%(mof))
+        if filename:
+            niss = open(filename,'rb')
+            sim = pickle.load(niss)
+            niss.close()
+            chargedic = {}
+            for atom in sim.structure.atoms:
+                chargedic[atom.site] = (atom.type, atom.charge)
+            return chargedic 
+        else:
+            warning("Couldn't find the charges file for %s"%mof)
+            return {} 
+
+    def _locate(self, basedir, file):
+        """Crawl a directory for a particular file, return the location."""
+        for root, dirs, files in os.walk(basedir):
+            if file in files:
+                return os.path.join(root,file)
+
 
 class CifFile(object):
     """This class will grab data from the cif file such as the

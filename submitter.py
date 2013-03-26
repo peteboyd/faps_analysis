@@ -24,6 +24,22 @@ optim_all = False
 quiet = True
 """
 
+faps_vasp_opt = """dft_code = vasp
+dispersion = False
+charge_method = repeat
+guests = CO2
+mc_eq_steps = 2000000
+mc_prod_steps = 10000000
+mc_numguests_freq = 50000
+mc_probability_plot = False
+mc_temperature = 298.0
+mc_pressure = 0.15
+no_properties = False
+optim_cell = True 
+optim_all = True 
+quiet = True
+"""
+
 faps_job_uff_qeq = """charge_method = gulp
 no_dft = True
 guests = CO2
@@ -127,6 +143,7 @@ optim_cell = False
 optim_h = False
 quiet = True
 """
+
 faps_job_egulp_param4dt2="""find_maxima = False 
 guests = CO2
 mc_eq_steps = 2000000
@@ -147,12 +164,14 @@ qeq_parameters =
     Br    5.692000      8.760000
      I    5.431000      5.720000
      S    3.369000      5.092000
+    800   8.714000      8.568000
     801  10.597000      9.744000
     802   7.968000     10.323000
 no_dft = True
 optim_all = False
 optim_cell = False 
 optim_h = False
+egulp_typed_atoms = True
 quiet = True
 """
 
@@ -176,6 +195,7 @@ qeq_parameters =
     Br    5.692000      8.760000
      I    5.431000      5.720000
      S    3.369000      5.092000
+    800   8.714000      8.568000
     801  10.528000      9.543000
     802   8.086000     10.187000
    1001   4.035000      6.722000
@@ -183,6 +203,7 @@ no_dft = True
 optim_all = False
 optim_cell = False 
 optim_h = False
+egulp_typed_atoms = True
 quiet = True
 """
 
@@ -221,10 +242,14 @@ class CommandLine(object):
                           dest="CHARGE_EGULP_4dt2",
                           help="Create submission directories with EGULP "+
                                "parameter set 4d.t2.")
-        parser.add_option("--egulp5", action="store_true",
+        parser.add_option("--egulp4dt3", action="store_true",
                           dest="CHARGE_EGULP_4dt3",
                           help="Create submission directories with EGULP "+
                                "parameter set 4dt3.")
+        parser.add_option("--vasp_opt", action="store_true",
+                          dest="VASP_OPT",
+                          help="Create submission directories to optimize " +
+                               "the MOFs at the DFT level.")
         parser.add_option("-U", "--uff", action="store_true", 
                           dest="CHARGE_UFF",
                           help="Create submission directories where the MOFs "+
@@ -272,6 +297,7 @@ for dir in ${dirs[@]}; do
         cp ${mof}/faps_${mof}_repeat/faps-${mof}.out ${mof}/${mof}_REPEAT.out
         cp ${mof}/faps_${mof}_vasp/CONTCAR ${mof}/${mof}_CONTCAR
         cp ${mof}/faps_${mof}_vasp/OUTCAR ${mof}/${mof}_OUTCAR
+        zip $zipname ${mof}/${mof}.cif
         zip $zipname ${mof}/${mof}_REPEAT.out
         zip $zipname ${mof}/${mof}_CONTCAR
         zip $zipname ${mof}/${mof}_OUTCAR
@@ -452,6 +478,12 @@ def gen_submit_dir(cmd, local_dir, basefile):
         except OSError:
             print("Directory already exists!")
         submit_dir = os.path.join(local_dir, basefile, "UFF_QEQ")
+    elif cmd.options.VASP_OPT:
+        try:
+            os.makedirs(os.path.join(local_dir, basefile, "VASP_OPT"))
+        except OSError:
+            print("Directory already exists!")
+        submit_dir = os.path.join(local_dir, basefile, "VASP_OPT")
 
     else:
         try:
@@ -525,6 +557,8 @@ def main():
                 wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
             elif cmd.options.CHARGE_UFF:
                 faplines = faps_job_uff_qeq
+            elif cmd.options.VASP_OPT:
+                faplines = faps_vasp_opt
             else:
                 faplines = faps_job_vasp_gcmc_sp
             # create the job info file
