@@ -157,7 +157,8 @@ class Options(object):
         # known booleans
         if key == 'report' or key == 'extract' or key == 'dataset' or\
                 key == 'top_ranked' or key == 'random' or \
-                key == 'gaussian' or key == 'report_ngrid':
+                key == 'gaussian' or key == 'report_ngrid' or \
+                key == 'comparison':
             try:
                 val = self.job.getboolean(section, key)
             except ValueError:
@@ -165,7 +166,8 @@ class Options(object):
         # known integers
         elif key == 'max_gridpoints' or key == 'total_mofs' or \
                 key == 'functional_max' or key == 'organic_max' or \
-                key == 'metal_max' or key == 'topology_max':
+                key == 'metal_max' or key == 'topology_max' or \
+                key == 'bin_interval':
             try: 
                 val = self.job.getint(section, key)
             except ValueError:
