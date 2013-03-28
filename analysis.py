@@ -1443,7 +1443,10 @@ class Comparison(object):
                     except KeyError:
                         warning("Could not find %s in the second charge set"%(atom))
                 met, o1, o2, top, junk = parse_mof_data(mof)
-                (fnl1, fnl2) = self.mof_dic[mof]["functional_groups"].keys()
+                try:
+                    (fnl1, fnl2) = self.mof_dic[mof]["functional_groups"].keys()
+                except ValueError:
+                    (fnl1, fnl2) = (None, None)
                 #YEUCH, ugly stuff next
                 self.met_bin[bin_num].setdefault(met(), 0)
                 self.met_bin[bin_num][met()] += 1
