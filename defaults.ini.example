@@ -72,5 +72,8 @@ bin_interval =
 comparison_value = 
 # location of faps directory
 faps_dir = /home/pboyd/codes_in_development/faps
+# file with a list of MOFs which the program will populate with information
+# if it exists in a huge .csv file and sql file.
+csv_info_file = 
 
 # vim:ft=dosini
