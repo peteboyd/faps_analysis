@@ -449,6 +449,10 @@ class Selector(object):
             if not self.options.uptake_cutoff:
                 for key, value in dataset.items():
                     dataset[key] = value[:self.options.functional_max]
+            # TODO(pboyd) add binning by all isolated factors in a MOF
+            # take top x structures (determined in input file)
+            if self.options.bin_prune:
+
         else:
             ranked_list = self.rank_by_uptake(moflist)
             rankcount = 0
@@ -483,6 +487,33 @@ class Selector(object):
                     _used_mofs.append(mof)
 
         self.write_dataset(dataset)
+
+    def bin_mof(self, mof):
+        """Bin mof into different categories"""
+        met, org1, org2, top, fnl = parse_mof_data(mof)
+        try:
+            (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
+        except ValueError:
+            # doesn't find two functional groups in the dictionary
+            fnl_grp1, fnl_grp2 = None, None
+
+        org_pair = tuple(sorted([org1(), org2()]))
+        fnl_pair = tuple(sorted([fnl_grp1, fnl_grp2]))
+        mofname = "str_m%i_o%i_o%i_%s"%(met(), org_pair[0], org_pair[1],
+                                        top())
+        self.mof_id.setdefault(mofname, []).append(mof)
+        self.fnl_p.setdefault(fnl_pair, []).append(mof)
+        self.org_p.setdefault(org_pair, []).append(mof)
+        self.org.setdefault(org_pair[0], []).append(mof)
+        self.org.setdefault(org_pair[1], []).append(mof)
+        if fnl_grp2 and fnl_grp1:
+            self.fnl.setdefault(fnl_grp2, []).append(mof)
+            self.fnl.setdefault(fnl_grp1, []).append(mof)
+        elif fnl_grp1 and not fnl_grp2:
+            self.fnl.setdefault(fnl_grp1, []).append(mof)
+        elif fnl_grp2 and not fnl_grp1:
+            self.fnl.setdefault(fnl_grp2, []).append(mof)
+        self.met.setdefault(met(), []).append(mof)
 
     def rank_by_uptake(self, mof_list):
         order = []
@@ -692,7 +723,7 @@ class Selector(object):
         filename = create_csv_filename(basename) 
         info("Writing dataset to %s.csv ..."%(filename))
         outstream = open(filename+".csv", "w")
-        header="MOFname,mmol/g,hoa,functional_group1,functional_group2"
+        header="MOFname,mmol/g,hoa/kcal/mol,functional_group1,functional_group2"
         if (self.options.max_gridpoints is not None) or\
                 (self.options.report_ngrid):
             header += ",ngrid\n"
@@ -829,7 +860,7 @@ class GrabNewData(object):
         filename = create_csv_filename(basename)
         info("Writing report to %s.csv ..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
-        header = "MOFname,mmol/g,hoa,Functional_grp1,Functional_grp2"
+        header = "MOFname,mmol/g,hoa/kcal/mol,Functional_grp1,Functional_grp2"
         if self.extended:
             header += ",grp1_replacements,grp2_replacements"
         if self.options.report_ngrid:
@@ -968,7 +999,7 @@ class JobHandler(object):
         if not self.options.combine and not self.options.cmd_opts.combine and\
                 not self.options.dataset and not self.options.report and \
                 not self.options.extract and not self.options.report and not \
-                self.options.comparison:
+                self.options.comparison and not self.options.csv_info_file:
             error("no job type requested!")
             sys.exit(1)
 
@@ -1029,6 +1060,12 @@ class JobHandler(object):
             info("Report requested")
             self.write_report()
 
+        elif self.options.csv_info_file:
+            info("Compiling info for %s"%(self.options.csv_info_file))
+            job = GetInfo(self.options)
+            info("Found %i MOFs in the file."%(len(job.moflist)))
+            job.write_csv_file()
+
     def extract_report(self):
         """Write a bunch of reports based on the stats of the MOFs in 
         the csv file.
@@ -1088,7 +1125,7 @@ class JobHandler(object):
                 uptake = dic.pop('mmol/g')
                 hoa = dic.pop('hoa')
                 dic['mmol/g-%s'%basenames[ind]] = uptake
-                dic['hoa-%s'%basenames[ind]] = hoa
+                dic['hoa/kcal/mol-%s'%basenames[ind]] = hoa
                 merged.setdefault(key, {})
                 merged[key].update(dic)
         # combine uptake columns and hoa columns
@@ -1102,8 +1139,8 @@ class JobHandler(object):
                 else:
                     warning("MOF %s not included in correlation calculations "%mof
                         + "because of 0 value for uptake")
-                if all([value['hoa-%s'%i] > 0. for i in basenames]):
-                    [hoa_corr[basenames.index(i)].append(value['hoa-%s'%i]) for 
+                if all([value['hoa/kcal/mol-%s'%i] > 0. for i in basenames]):
+                    [hoa_corr[basenames.index(i)].append(value['hoa/kcal/mol-%s'%i]) for 
                             i in basenames]
                 else:
                     warning("MOF %s not included in correlation calculations "%mof
@@ -1138,6 +1175,47 @@ class JobHandler(object):
         name = names.keys()[0]
         name += ".merged"
         write_csv(name, merged)
+
+class GetInfo(object):
+    """Gets as much information as I could think of from a list of MOFs
+    provided by the user.
+
+    """
+    def __init__(self, options):
+        self.options = options
+        self.fnl_dic =  FunctionalGroups(self.options.sql_file)
+        self.mof_dic = CSV(self.options.csv_file)
+        self.moflist = self._get_list_of_mofs()
+        pair_mofs_fnl(self.mof_dic, self.fnl_dic)
+
+    def _get_list_of_mofs(self):
+       return MOFlist(self.options.csv_info_file) 
+
+    def write_csv_file(self):
+        filename = create_csv_filename(clean(self.options.csv_info_file))
+        info("Writing info file as %s.csv"%(filename))
+        csvstream = open(filename+".csv", "w")
+        header = "MOFname,mmol/g,hoa/kcal/mol,Functional_grp1,Functional_grp2\n"
+        csvstream.writelines(header)
+        for mof in self.moflist:
+            try:
+                mmol_g = self.mof_dic[mof]['mmol/g']
+            except KeyError:
+                mmol_g = 0.
+            try:
+                hoa = self.mof_dic[mof]['hoa']
+            except KeyError:
+                hoa = 0.
+            try:
+                fnl_1 = self.mof_dic[mof]['functional_groups'].keys()[0]
+                fnl_2 = self.mof_dic[mof]['functional_groups'].keys()[1]
+            except KeyError:
+                fnl_1 = None
+                fnl_2 = None
+            fnl_1 = fnl_1 if fnl_1 else None
+            fnl_2 = fnl_2 if fnl_2 else None
+            csvstream.writelines("%s,%f,%f,%s,%s\n"%(mof,mmol_g,hoa,fnl_1,fnl_2))
+        csvstream.close()
 
 class Extract(object):
     """Extract as much information from a list of mofnames, and provide
