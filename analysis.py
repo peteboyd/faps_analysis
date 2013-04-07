@@ -275,14 +275,12 @@ class Selector(object):
     def __init__(self, options, mof_dic):
         self.options = options
         self.mof_dic = mof_dic.copy()
+        self.dataset = {'master_list':[]}
         self.ignore = MOFlist(self.options.ignore_list)
         self._assign_metalind()
-        self._assign_maxima()
-        top_bool = True if self.options.topologies else False
-        self._print_info()
         if self.options.max_gridpoints == 0:
             self.options.max_gridpoints = None
-        self.trim_undesired(_TOPOLOGY=top_bool)
+        self.trim_undesired()
 
     def _print_info(self):
         info("Inclusive functional groups: %s"%
@@ -351,31 +349,23 @@ class Selector(object):
             self.options.functional_max = (self.options.total_mofs / 20)
 
 
-    def trim_undesired(self, _METAL=True, _ORGANIC=True, _TOPOLOGY=True):
-        """Reduces the number of mofs in the mof_dic dictionary based
-        on requested metal indices, topologies, and bad organic species
-
+    def trim_undesired(self):
+        """Trims the MOFs with bad organic linkers from the database.
+        This is temporary and should be removed.
         """
         temp_moflist = self.mof_dic.keys()
         for mof in temp_moflist:
             met, org1, org2, top, fnl = parse_mof_data(mof)
             pop = False
-            if _METAL:
-                if met() not in self.metalind:
-                    pop = True
-            if _TOPOLOGY:
-                if top() not in self.options.topologies:
-                    pop = True
-            if _ORGANIC:
-                o1 = org1()
-                o2 = org2()
-                orgpair = tuple(sorted([o1, o2]))
-                if (o1 in self.bad_organics):
-                    pop = True
-                elif (o2 in self.bad_organics):
-                    pop = True
-                elif (orgpair in self.bad_organics):
-                    pop = True
+            o1 = org1()
+            o2 = org2()
+            orgpair = tuple(sorted([o1, o2]))
+            if (o1 in self.bad_organics):
+                pop = True
+            elif (o2 in self.bad_organics):
+                pop = True
+            elif (orgpair in self.bad_organics):
+                pop = True
             if pop:
                 self.mof_dic.pop(mof)
 
@@ -399,10 +389,6 @@ class Selector(object):
         dictionary and write to a csv file.
 
         """
-        # dictionaries to bin MOFs into specific categories
-        # ===========
-        self.dataset = {'master_list':[]} 
-        # ===========
         mofnames = self.mof_dic.keys()
         info("Size of the list of MOFs to sample from: %i"%(
             len(mofnames)))
@@ -410,9 +396,31 @@ class Selector(object):
             if self._valid_mof(mof):
                 self._bin_mof(mof)
                 self.dataset['master_list'].append(mof)
-                sys.exit()
+        # rank bins by uptake
+        limit = self.options.total_mofs if self.options.total_mofs else None
+        for bin, dic in self.dataset.items():
+            if bin == 'master_list':
+                self.dataset[bin] = self._rank_by_uptake(dic)
+                self.write_dataset(self.dataset[bin][:limit],
+                                   basename="top_ranked") 
+            else:
+                for key, val in dic.items():
+                    self.dataset[bin][key] = self._rank_by_uptake(val)
+                    self.write_dataset(self.dataset[bin][key][:limit],
+                        basename="%s_%s_top_ranked"%(bin,key))
 
-        self.write_dataset(dataset)
+    def _rank_by_uptake(self, list):
+        """Rank by mmol/g uptake."""
+        order = []
+        for mof in list:
+            try:
+                uptake = self.mof_dic[mof]['mmol/g']
+            except KeyError:
+                uptake = 0.
+
+            order.append(tuple([uptake, mof]))
+        order = [i for i in reversed(sorted(order))]
+        return [i[1] for i in order[:]]
 
     def _bin_mof(self, mof):
         """Bin mof into different categories"""
@@ -433,7 +441,7 @@ class Selector(object):
 
         org_pair = tuple(sorted([org1, org2]))
         fnl_pair = tuple(sorted([fnl_grp1, fnl_grp2]))
-        mofname = "str_m%i_o%i_o%i_%s"%(met, org_pair1, org_pair2, top)
+        mofname = "str_m%i_o%i_o%i_%s"%(met, org_pair[0], org_pair[1], top)
         self.dataset.setdefault('mof_id',{}).setdefault(mofname,[]).append(mof)
         self.dataset.setdefault('fnl_p',{}).setdefault(fnl_pair,[]).append(mof)
         self.dataset.setdefault('org_p',{}).setdefault(org_pair,[]).append(mof)
@@ -525,16 +533,20 @@ class Selector(object):
 
         # 7 - check if the functional group is in the INCLUDE list
         if self.options.fnl_include:
-            if fnl1:
+            if fnl1 and not fnl2:
                 if fnl1 not in self.options.fnl_include:
                     debug("%s has a functional group not in the include list"
                             %(mof))
                     return False
-            if fnl2:
+            elif fnl2 and not fnl1:
                 if fnl2 not in self.options.fnl_include:
                     debug("%s has a functional group not in the include list"
                             %(mof))
                     return False
+            else:
+                debug("%s contains two functional groups, the fnl_include" +
+                        " list restricts only one per MOF"%(mof))
+                return False
 
         # 8 - check if the organic linkers are in the EXCLUDE list
         if (org1 in self.options.org_exclude) or \
@@ -587,13 +599,17 @@ class Selector(object):
         """Select a list of MOFs randomly 
 
         """
-        dataset = {}
+        # check if total_mofs is allocated, if not, then assign default of 100
+        if not self.options.total_mofs:
+            self.options.total_mofs = 100
+        self._assign_maxima()
+        self._print_info()
         organics_count, fnl_groups_count = {}, {}
         top_count, met_index_count = {}, {}
         mofcount = 0
         # generate a list of valid mofs which obey the inclusive, partial and 
         # exclude lists.
-        moflist = self._gen_moflist()
+        moflist = self.mof_dic.keys()
         done = False
         info("Size of the list of MOFs to sample from: %i"%(len(moflist))) 
         while not done:
@@ -605,82 +621,40 @@ class Selector(object):
                       "output file anyways..")
                 self.write_dataset(dataset)
                 return
-            met, org1, org2, top, fnl = parse_mof_data(mof)
-            uptake = self.mof_dic[mof]['mmol/g']
-            try:
-                (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
-            except ValueError:
-                # doesn't find two functional groups in the dictionary
-                fnl_grp1, fnl_grp2 = None, None
-            except KeyError:
-                # doesn't find the key [mof] or ['functional_groups'] in their
-                # associated dictionaries
-                fnl_grp1, fnl_grp2 = None, None
-            org_max = self.check_dictionary_counts(organics_count,
+            if self._valid_mof(mof):
+                org_max = self.check_dictionary_counts(organics_count,
                                                 organic1=org1(),
                                                 organic2=org2())
-            fnl_max = self.check_dictionary_counts(fnl_groups_count, 
+                fnl_max = self.check_dictionary_counts(fnl_groups_count, 
                                                    fnl_group1=fnl_grp1, 
                                                    fnl_group2=fnl_grp2)
-            top_max = self.check_dictionary_counts(top_count,
+                top_max = self.check_dictionary_counts(top_count,
                                                    topology=top())
-            met_max = self.check_dictionary_counts(met_index_count,
+                met_max = self.check_dictionary_counts(met_index_count,
                                                    metal=met())
-            if self.options.gaussian:
-                upt_wght = self.weight_by_gaussian(uptake)
-            else:
-                upt_wght = True
-            if self.options.max_gridpoints:
-                try:
-                    ngrid = self.mof_dic[mof]['ngrid']
-                except KeyError:
-                    ngrid = self.grid_points(mof)
-                    self.mof_dic[mof]['ngrid'] = ngrid
-                ngrid_test = (ngrid > 0 and 
-                    (ngrid <= self.options.max_gridpoints))
-            else:
-                ngrid_test = True
-            # check to see if only the weighted uptake failed.
-            # If so, put the mof back in the pool for selection later..
-            # I did this because the lists are not completing.
-            if not upt_wght and not org_max and not fnl_max and not top_max \
-                    and not met_max and ngrid_test:
-                # put the mof back in the random selection pool.
-                moflist.append(mof)
-
-            # debug to figure out why full lists are not being made
-            if not ngrid_test or org_max or fnl_max or top_max or met_max or \
-                    not upt_wght:
-                debug("Tests for mof %s"%mof)
-                debug("Grid point test: %s"%ngrid_test)
-                debug("Weight on uptake test: %s"%upt_wght)
-                debug("Max Organic test: %s"%org_max)
-                debug("Max Functional group test: %s"%fnl_max)
-                debug("Max topology test: %s"%top_max)
-                debug("Max metal test: %s"%met_max)
             
-            if ngrid_test and not org_max and not fnl_max and not top_max and \
-                    not met_max and upt_wght:
-                # increment counts 
-                self.increment_dictionary_counts(organics_count,
+                if not org_max and not fnl_max and not top_max and \
+                        not met_max:
+                    # increment counts 
+                    self.increment_dictionary_counts(organics_count,
                                                  org1(), 
                                                  org2())
-                # keep track of functional group counts
-                self.increment_dictionary_counts(fnl_groups_count,
+                    # keep track of functional group counts
+                    self.increment_dictionary_counts(fnl_groups_count,
                                                  fnl_grp1,
                                                  fnl_grp2)
-                # keep track of metal index counts
-                self.increment_dictionary_counts(met_index_count,
+                    # keep track of metal index counts
+                    self.increment_dictionary_counts(met_index_count,
                                                  met())
-                # keep track of topology counts
-                self.increment_dictionary_counts(top_count,
+                    # keep track of topology counts
+                    self.increment_dictionary_counts(top_count,
                                                  top())
-                # append to list
-                dataset.setdefault(tuple((fnl_grp1, fnl_grp2)), []).append(mof)
-                mofcount += 1
+                    # append to list
+                    self.dataset['master_list'].append(mof)
+                    mofcount += 1
             if mofcount >= self.options.total_mofs:
                 done = True
-        self.write_dataset(dataset)
+        self.write_dataset(self.dataset['master_list'])
 
     def check_dictionary_counts(self, dictionary, **kwargs):
 
@@ -749,22 +723,23 @@ class Selector(object):
                                    from_cif.cart_coordinates)
         return ngrid 
 
-    def write_dataset(self, dataset):
+    def write_dataset(self, dataset, basename=None):
         """Writes the data to a file."""
         os.chdir(self.options.job_dir)
-        basename = ""
-        if self.metalind:
-            metal_titles = []
-            for met in self.metalind:
-                for key, value in self.metal_indices.items():
-                    if met in value:
-                        metal_titles.append(key)
-            for metal in set(metal_titles):
-                basename += "%s_"%metal
-        basename += "dataset"
-        if self.options.topologies:
-            for top in self.options.topologies:
-                basename += "_%s"%top
+        if basename is None:
+            basename = ""
+            if self.metalind:
+                metal_titles = []
+                for met in self.metalind:
+                    for key, value in self.metal_indices.items():
+                        if met in value:
+                            metal_titles.append(key)
+                for metal in set(metal_titles):
+                    basename += "%s_"%metal
+            basename += "dataset"
+            if self.options.topologies:
+                for top in self.options.topologies:
+                    basename += "_%s"%top
         count = 0
         order_by_fnl = {}
         filename = create_csv_filename(basename) 

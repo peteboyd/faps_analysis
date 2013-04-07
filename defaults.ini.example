@@ -41,7 +41,7 @@ fnl_exclude =
 org_include =
 # Request that none of these organic linkers be included in the dataset. (dataset: [True])
 org_exclude = 
-# Total number of MOFs in the dataset (default: [100])
+# Total number of MOFs in the dataset 
 total_mofs =
 # Maximum number of grid points allowed for the egulp charge calculation (default 0)
 max_gridpoints = 
