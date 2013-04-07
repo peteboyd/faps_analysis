@@ -753,7 +753,10 @@ class Selector(object):
             header += "\n"
         outstream.writelines(header)
         for mof in dataset:
-            fnl1, fnl2 = self.mof_dic['functional_groups'].keys()
+            try:
+                fnl1, fnl2 = self.mof_dic['functional_groups'].keys()
+            except KeyError:
+                fnl1, fnl2 = None, None
             if not fnl1:
                 fnl1 = "None"
             if not fnl2:
