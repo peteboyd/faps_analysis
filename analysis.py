@@ -275,13 +275,7 @@ class Selector(object):
     def __init__(self, options, mof_dic):
         self.options = options
         self.mof_dic = mof_dic.copy()
-        used_mofs = MOFlist(self.options.ignore_list)
-        # remove mofs in the dictionary which have already been used
-        for mof in used_mofs:
-            try:
-                self.mof_dic.pop(mof)
-            except KeyError:
-                pass
+        self.ignore = MOFlist(self.options.ignore_list)
         self._assign_metalind()
         self._assign_maxima()
         top_bool = True if self.options.topologies else False
@@ -385,157 +379,209 @@ class Selector(object):
             if pop:
                 self.mof_dic.pop(mof)
 
-    def trim_non_existing(self):
-        """Reduces the number of mofs in the mof_dic based on if the actual
-        .cif file for the MOF exist in a specified directory. If it does not,
-        the mof is deleted from the dictionary.
-
-        """
+    def non_existing(self, mof):
+        """Checks a MOF against a directory to see if the cif exists."""
         dir = self.options.lookup 
-        info("Checking %s for all mofs..."%(dir))
         if not os.path.isdir(self.options.lookup):
-            error("Problem finding the directory, exiting..")
+            error("Could not find the .cif directory, exiting..")
             sys.exit(1)
-        temp_moflist = self.mof_dic.keys()
-        for mof in temp_moflist:
-            # re-name mof to the out directory standards.
-            met, org1, org2, top, fnl = parse_mof_data(mof)
-            newmofname = "str_m" + str(met()) + "_o" + str(org1()) + \
+        # re-name mof to the out directory standards.
+        met, org1, org2, top, fnl = parse_mof_data(mof)
+        newmofname = "str_m" + str(met()) + "_o" + str(org1()) + \
                     "_o" + str(org2()) + "_f0_" + top() + ".sym." + \
                     str(fnl()) + ".out.cif"
-            if not os.path.isfile(dir + "/" + newmofname):
-                self.mof_dic.pop(mof)
-                #warning("%s  does not exist!"%(mof))
+        if not os.path.isfile(dir + "/" + newmofname):
+            return True
+        return False
 
     def top_select(self):
         """Order the mofs by top ranked structures.  store in a dataset
         dictionary and write to a csv file.
 
         """
-        dataset = {}
-        moflist = self._gen_moflist()
-        info("Size of the list of MOFs to sample from: %i"%(len(moflist)))
-        _used_mofs = []
-        if self.options.fnl_include or self.options.fnl_partial:
-            for group in self.options.fnl_include + self.options.fnl_partial:
-                # obtain list of mofs containing group,
-                partial_list = self.isolate_group(moflist, group)
-                ranked_list = self.rank_by_uptake(partial_list)
-                for mof in ranked_list:
-                    if self.options.max_gridpoints:
-                        try:
-                            ngrid = self.mof_dic[mof]['ngrid']
-                        except KeyError:
-                            ngrid = self.grid_points(mof)
-                            self.mof_dic[mof]['ngrid'] = ngrid
-                        ngrid_test = (ngrid > 0 and (ngrid <= 
-                                  self.options.max_gridpoints))
-                    else:
-                        ngrid_test = True
-                    if self.options.uptake_cutoff:
-                        # grab the uptake from the original dictionary.
-                        ads = self.mof_dic[mof]['mmol/g']
-                        uptake = True if (ads >= self.options.uptake_cutoff)\
-                                else False
-                    else:
-                        uptake = True
-                    if ngrid_test and uptake and mof not in _used_mofs:
-                        groups = self.mof_dic[mof]['functional_groups'].keys()
-                        dataset.setdefault(tuple(groups), []).append(mof)
-                        _used_mofs.append(mof)
-
-            # if uptake cutoff is requested, then keep all above the
-            # cutoff, otherwise respect the functional_max parameter
-            if not self.options.uptake_cutoff:
-                for key, value in dataset.items():
-                    dataset[key] = value[:self.options.functional_max]
-            # TODO(pboyd) add binning by all isolated factors in a MOF
-            # take top x structures (determined in input file)
-            if self.options.bin_prune:
-
-        else:
-            ranked_list = self.rank_by_uptake(moflist)
-            rankcount = 0
-            for mof in ranked_list:
-                rankcount += 1
-                groups = self.mof_dic[mof]['functional_groups'].keys()
-                if self.options.max_gridpoints:
-                    try:
-                        ngrid = self.mof_dic[mof]['ngrid']
-                    except KeyError:
-                        ngrid = self.grid_points(mof)
-                        self.mof_dic[mof]['ngrid'] = ngrid
-                    ngrid_test = (ngrid > 0 and (ngrid <= 
-                              self.options.max_gridpoints))
-                else:
-                    ngrid_test = True
-                # uptake_cutoff will override the max number of mofs set
-                # in the input, this requires two booleans, max and uptake
-                # to ensure the final dataset is correct.
-                if self.options.uptake_cutoff:
-                    # grab the uptake from the original dictionary.
-                    ads = self.mof_dic[mof]['mmol/g']
-                    uptake = True if (ads >= self.options.uptake_cutoff)\
-                             else False
-                    max = False
-                else:
-                    uptake = True
-                    max = False if (rankcount <= self.options.total_mofs)\
-                            else True 
-                if ngrid_test and uptake and not max and mof not in _used_mofs:
-                    dataset.setdefault(tuple(groups), []).append(mof)
-                    _used_mofs.append(mof)
+        # dictionaries to bin MOFs into specific categories
+        # ===========
+        self.dataset = {'master_list':[]} 
+        # ===========
+        mofnames = self.mof_dic.keys()
+        info("Size of the list of MOFs to sample from: %i"%(
+            len(mofnames)))
+        for mof in mofnames:
+            if self._valid_mof(mof):
+                self._bin_mof(mof)
+                self.dataset['master_list'].append(mof)
+                sys.exit()
 
         self.write_dataset(dataset)
 
-    def bin_mof(self, mof):
+    def _bin_mof(self, mof):
         """Bin mof into different categories"""
         met, org1, org2, top, fnl = parse_mof_data(mof)
+        met = met()
+        org1 = org1()
+        org2 = org2()
+        top = top()
         try:
             (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
+            if not fnl_grp1:
+                fnl_grp1 = "None"
+            if not fnl_grp2:
+                fnl_grp2 = "None"
         except ValueError:
             # doesn't find two functional groups in the dictionary
-            fnl_grp1, fnl_grp2 = None, None
+            fnl_grp1, fnl_grp2 = "None", "None"
 
-        org_pair = tuple(sorted([org1(), org2()]))
+        org_pair = tuple(sorted([org1, org2]))
         fnl_pair = tuple(sorted([fnl_grp1, fnl_grp2]))
-        mofname = "str_m%i_o%i_o%i_%s"%(met(), org_pair[0], org_pair[1],
-                                        top())
-        self.mof_id.setdefault(mofname, []).append(mof)
-        self.fnl_p.setdefault(fnl_pair, []).append(mof)
-        self.org_p.setdefault(org_pair, []).append(mof)
-        self.org.setdefault(org_pair[0], []).append(mof)
-        self.org.setdefault(org_pair[1], []).append(mof)
-        if fnl_grp2 and fnl_grp1:
-            self.fnl.setdefault(fnl_grp2, []).append(mof)
-            self.fnl.setdefault(fnl_grp1, []).append(mof)
-        elif fnl_grp1 and not fnl_grp2:
-            self.fnl.setdefault(fnl_grp1, []).append(mof)
-        elif fnl_grp2 and not fnl_grp1:
-            self.fnl.setdefault(fnl_grp2, []).append(mof)
-        self.met.setdefault(met(), []).append(mof)
+        mofname = "str_m%i_o%i_o%i_%s"%(met, org_pair1, org_pair2, top)
+        self.dataset.setdefault('mof_id',{}).setdefault(mofname,[]).append(mof)
+        self.dataset.setdefault('fnl_p',{}).setdefault(fnl_pair,[]).append(mof)
+        self.dataset.setdefault('org_p',{}).setdefault(org_pair,[]).append(mof)
+        self.dataset.setdefault('org',{}).setdefault(org1,[]).append(mof)
+        self.dataset.setdefault('org',{}).setdefault(org2,[]).append(mof)
+        self.dataset.setdefault('met',{}).setdefault(met, []).append(mof)
+        if fnl_grp1 == fnl_grp2:
+            self.dataset.setdefault('fnl',{}).setdefault(fnl_grp1,[]).append(mof)
+        else:
+            self.dataset.setdefault('fnl',{}).setdefault(fnl_grp1,[]).append(mof)
+            self.dataset.setdefault('fnl',{}).setdefault(fnl_grp2,[]).append(mof)
 
-    def rank_by_uptake(self, mof_list):
-        order = []
-        for mof in mof_list:
-            # grab uptake
+    def _valid_mof(self, mof):
+        """Discriminate a mof based on whatever criteria is set in the
+        input file.
+        Current checks in order are:
+
+        1  - MOF is not in the ignore list
+        2  - MOF exists in the lookup directory
+        3  - the reported uptake (mmol/g) is above the cutoff
+        4  - the reported uptake (mmol/g) samples a gaussian dist.
+        5  - Functional groups are not in the EXCLUDE list
+        6  - Functional groups are in the PARTIAL list
+        7  - Functional group is in the INCLUDE list
+        8  - Organic linkers are not in the EXCLUDE list
+        9  - Organic linkers are in the INCLUDE list (read: PARTIAL)
+        10 - Metal indices are in the metal INCLUDE list
+        11 - The topology is in the topology INCLUDE list
+        12 - ESP gridpoints is below a given maximum
+        """
+        # grab the data for the mof
+        met, org1, org2, top, fnl = parse_mof_data(mof)
+        org1, org2 = org1(), org2()
+        met = met()
+        top = top()
+        try:
+            (fnl1, fnl2) = self.mof_dic[mof]['functional_groups']
+        except ValueError:
+            # doesn't find two functional groups in the dictionary
+            fnl1, fnl2 = None, None
+            # return false in the case that discriminating against
+            # functional group was requested. False due to the  
+            # assumption that the functional group listing for this mof 
+            # could not be found.
+            if self.options.fnl_include or self.options.fnl_partial:
+                return False
+ 
+        uptake = self.mof_dic[mof]['mmol/g']
+
+        # 1 - check if the MOF exists in the ignore list 
+        if mof in self.ignore:
+            debug("%s was found in the ignore list"%(mof))
+            return False
+
+        # 2 - check if the MOF exists in the directory of .cif files
+        if self.options.lookup:
+            if self.non_existing(mof):
+                debug("%s  does not exist!"%(mof))
+                return False
+
+        # 3 - check if the uptake reported in mmol/g is above the cutoff
+        if uptake < self.options.uptake_cutoff:
+            debug("%s has an uptake, %4.2f. This is lower than the cutoff"%
+                    (mof, uptake))
+            return False
+
+        # 4 - determine if the uptake fits in the gaussian distribution
+        if self.options.gaussian:
+            # NOTE: this creates a gaussian each instance it's called - 
+            # I should implement a pre-computed gaussian curve to reduce 
+            # computational expense
+            if not weight_by_gaussian(uptake):
+                debug("%s has an uptake, %4.2f not sampled by the gaussian."%
+                        (mof, uptake))
+                return False
+
+        # 5 - check if the functional groups are in the EXCLUDE list
+        if (fnl1 in self.options.fnl_exclude) or \
+                (fnl2 in self.options.fnl_exclude):
+            debug("%s has functional groups in the exclude list"%mof)
+            return False
+
+        # 6 - check if the functional groups are in the PARTIAL list
+        if self.options.fnl_partial:
+            if (fnl1 not in self.options.fnl_partial) and \
+                (fnl2 not in self.options.fnl_partial):
+                debug("%s has functional groups not in the partial list"%mof)
+                return False
+
+        # 7 - check if the functional group is in the INCLUDE list
+        if self.options.fnl_include:
+            if fnl1:
+                if fnl1 not in self.options.fnl_include:
+                    debug("%s has a functional group not in the include list"
+                            %(mof))
+                    return False
+            if fnl2:
+                if fnl2 not in self.options.fnl_include:
+                    debug("%s has a functional group not in the include list"
+                            %(mof))
+                    return False
+
+        # 8 - check if the organic linkers are in the EXCLUDE list
+        if (org1 in self.options.org_exclude) or \
+                (org2 in self.options.org_exclude):
+            debug("%s has organic linkers in the exclude list"%mof)
+            return False
+
+        # 9 - check if the organic linkers are in the INCLUDE list
+        if self.options.org_include:
+            if (org1 not in self.options.org_include) and \
+                (org2 not in self.options.org_include):
+                debug("%s has organic linkers not in the include list"%mof)
+                return False
+
+        # 10 - check if the metal index is in the list of METALS.
+        if met not in self.metalind:
+            debug("%s metal linker is not in the metal list"%(mof))
+            return False
+
+        # 11 - check if the topology is in the topology list.
+        if self.options.topologies:
+            if top not in self.options.topologies:
+                debug("%s topology is not in the topology include list"%(mof))
+                return False
+
+        # 12 - determine if the number of esp grid points is below
+        # a maximum (if requested)
+        # TODO(pboyd): include some estimating scheme, this takes
+        # way to long for the entire database.
+        if self.options.report_ngrid:
             try:
-                uptake = self.mof_dic[mof]['mmol/g']
+                ngrid = self.mof_dic[mof]['ngrid']
             except KeyError:
-                uptake = 0.
+                ngrid = self.grid_points(mof)
+                self.mof_dic[mof]['ngrid'] = ngrid
 
-            order.append(tuple([uptake, mof]))
-        order = [i for i in reversed(sorted(order))]
-        order = [i[1] for i in order[:]]
-        return order
+            if ngrid <= 0:
+                debug("gridpoint calculation had errors, ignoring %s"%mof)
+                return False
 
-    def isolate_group(self, moflist, group):
-        plist = []
-        for mof in moflist:
-            groups = self.mof_dic[mof]['functional_groups'].keys()
-            if group in groups:
-                plist.append(mof)
-        return plist
+            if ngrid > self.options.max_gridpoints:
+                debug("%s contains %i gridpoints.  The max is %i"%
+                        (mof,ngrid,self.options.max_gridpoints))
+                return False
+
+        # all tests passed, return True.
+        return True
 
     def random_select(self):
         """Select a list of MOFs randomly 
@@ -682,7 +728,7 @@ class Selector(object):
     def weight_by_gaussian(self, uptake, a=1, b=5, c=1.3):
         """Weight according to a gaussian distribution based on uptake.
         Defaults are a distribution amplitude of 1, centered around
-        5 mmol/g, smeared by 1.5 (width)"""
+        5 mmol/g, smeared by 1.3 (width)"""
         gauss = gaussian(a, b, c)
         # probability of accepting the gaussian weight determined
         # by a random number between 0 and a.
@@ -720,6 +766,7 @@ class Selector(object):
             for top in self.options.topologies:
                 basename += "_%s"%top
         count = 0
+        order_by_fnl = {}
         filename = create_csv_filename(basename) 
         info("Writing dataset to %s.csv ..."%(filename))
         outstream = open(filename+".csv", "w")
@@ -730,75 +777,40 @@ class Selector(object):
         else:
             header += "\n"
         outstream.writelines(header)
-        for fnl, mofs in dataset.iteritems():
-            if len(fnl) == 1:
-                debug("Functional group: %s"%fnl)
-                groups = tuple([fnl[0], None])
-            elif len(fnl) == 2:
-                debug("Functional groups: %s, %s"%(fnl))
-                groups = fnl
+        for mof in dataset:
+            fnl1, fnl2 = self.mof_dic['functional_groups'].keys()
+            if not fnl1:
+                fnl1 = "None"
+            if not fnl2:
+                fnl2 = "None"
+            order_by_fnl.setdefault((fnl1,fnl2),[]).append(mof)
+            try:
+                uptake = self.mof_dic[mof]['mmol/g']
+            except KeyError:
+                uptake = 0.
+            try:
+                hoa = self.mof_dic[mof]['hoa']
+            except KeyError:
+                hoa = 0.
+            line = "%s,%f,%f,%s,%s"%(mof, uptake, hoa, groups[0], groups[1])
+            if (self.options.report_ngrid):
+                try:
+                    ngrid = self.mof_dic[mof]['ngrid']
+                except KeyError:
+                    ngrid = self.grid_points(mof)
+                line += ",%i\n"%(ngrid)
+            else:
+                line += "\n"
+            outstream.writelines(line)
+        outstream.close()
+        # write this stuff to the terminal (log file)
+        # this was legacy from an older version of the code.
+        for fnl, mofs in order_by_fnl.items():
+            debug("Functional groups: %s, %s"%(fnl[0], fnl[1]))
             for mof in mofs:
                 debug("     " + mof)
-                try:
-                    uptake = self.mof_dic[mof]['mmol/g']
-                except KeyError:
-                    uptake = 0.
-                try:
-                    hoa = self.mof_dic[mof]['hoa']
-                except KeyError:
-                    hoa = 0.
-                line = "%s,%f,%f,%s,%s"%(mof, uptake, hoa, groups[0], groups[1])
-                if (self.options.max_gridpoints is not None) or \
-                        (self.options.report_ngrid):
-                    try:
-                        ngrid = self.mof_dic[mof]['ngrid']
-                    except KeyError:
-                        ngrid = self.grid_points(mof)
-                    line += ",%i\n"%(ngrid)
-                else:
-                    line += "\n"
-                outstream.writelines(line)
-        outstream.close()
+
         info("Done.")
-
-    def _gen_moflist(self):
-        """Returns a list of MOFs which are chosen based on the 
-        discrimination input lists.
-
-        """
-        moflist = []
-        inclusive = self.options.fnl_include
-        partial = self.options.fnl_partial
-        exclude = self.options.fnl_exclude
-        if not inclusive and not partial and not exclude:
-            return self.mof_dic.keys()
-
-        for key, value in self.mof_dic.iteritems():
-            try:
-                (group1, group2) = value['functional_groups'].keys()
-            except KeyError:
-                value['functional_groups'] = {False:[], None:[]}
-                (group1, group2) = (None, None)
-            except ValueError:
-                group1, group2 = None, None
-
-            if group1 in exclude or group2 in exclude:
-                # do not append
-                pass
-            elif (group1 in partial or group2 in partial) and \
-                (group1 not in inclusive and group2 not in inclusive) \
-                and partial:
-                # append
-                moflist.append(key)
-            elif ((group1 in inclusive and group2 is None) or
-                  (group1 is None and group2 in inclusive)) and inclusive:
-                # append
-                moflist.append(key)
-            elif not inclusive and not partial:
-                # append if no restrictions made on inclusive and partial
-                moflist.append(key)
-
-        return moflist
 
 class GrabNewData(object):
     """Takes a mof dictionary and adds new uptake data to it."""
@@ -993,9 +1005,10 @@ class JobHandler(object):
 
     def __init__(self, options):
         self.options = options
+        self._check_inconsistencies()
         self._direct_job()
 
-    def _check_if_ok(self):
+    def _check_job_type(self):
         if not self.options.combine and not self.options.cmd_opts.combine and\
                 not self.options.dataset and not self.options.report and \
                 not self.options.extract and not self.options.report and not \
@@ -1003,8 +1016,23 @@ class JobHandler(object):
             error("no job type requested!")
             sys.exit(1)
 
+    def _check_inconsistencies(self):
+        """General function to check if requested job directives conflict."""
+        # check if the necessary boolean was requested for the gridpoints.
+        if self.options.max_gridpoints > 0 and not self.options.report_ngrid:
+            error("The gridpoint max cutoff was set to %i but report_ngrid was"
+                    +" not enabled in the input file, set report_ngrid = True!")
+            sys.exit(1)
+        
+        # check if the number of gridpoints max is really low.
+        if self.options.report_ngrid and self.options.dataset and \
+                self.options.max_gridpoints < 50:
+            warning("The max number of gridpoints was set to %i, "%(
+                self.options.max_gridpoints) + "this is likely too low"
+                + " set max_gridpoints to > 50,000")
+
     def _direct_job(self):
-        self._check_if_ok()
+        self._check_job_type()
         if self.options.combine or self.options.cmd_opts.combine:
             comb_list = self.options.combine + self.options.cmd_opts.combine
             info("Combining csv files: %s"%(', '.join(comb_list)))
@@ -1081,7 +1109,6 @@ class JobHandler(object):
     
         """
         sel = Selector(self.options, self.mofs)
-        sel.trim_non_existing()
         sel.random_select()
 
     def run_comparison(self):
@@ -1107,7 +1134,6 @@ class JobHandler(object):
 
     def generate_top_structures(self):
         sel = Selector(self.options, self.mofs)
-        sel.trim_non_existing()
         sel.top_select()
 
     def combine_csvs(self, *args):
@@ -1465,7 +1491,7 @@ class Comparison(object):
 
     def _determine_min_max(self):
 
-        self.min = 0
+        self.min = 1
         self.max = 0
         for mof in self.mof_dic.keys():
             diff = self._get_difference(mof)
