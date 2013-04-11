@@ -10,7 +10,7 @@ fap_dic = {
                     "optim_h = False",
                     "optim_all = False",
                     "quiet = True",
-                    ]
+                    ],
 
         "vasp_opt":
                    ["dft_code = vasp",
@@ -27,7 +27,7 @@ fap_dic = {
                     "optim_cell = True", 
                     "optim_all = True", 
                     "quiet = True"
-                    ]
+                    ],
 
         "uff_qeq":
                    ["charge_method = gulp",
@@ -45,7 +45,7 @@ fap_dic = {
                     "quiet = True",
                     "qeq_parameters =",
                     "    Cu    4.20000000    4.22000000"
-                    ]
+                    ],
 
         "vasp_gcmc_sp":
                    ["charge_method = repeat",
@@ -62,7 +62,7 @@ fap_dic = {
                     "optim_cell = False", 
                     "optim_h = False",
                     "quiet = True"
-                    ]
+                    ],
 
         "noq_gcmc":
                    ["find_maxima = False", 
@@ -79,7 +79,7 @@ fap_dic = {
                     "optim_cell = False", 
                     "optim_h = False",
                     "quiet = True"
-                    ]
+                    ],
 
         "egulp_3":
                    ["find_maxima = False", 
@@ -107,7 +107,7 @@ fap_dic = {
                     "optim_cell = False", 
                     "optim_h = False",
                     "quiet = True"
-                    ]
+                    ],
 
         "egulp_4d":
                    ["find_maxima = False", 
@@ -135,7 +135,7 @@ fap_dic = {
                     "optim_cell = False", 
                     "optim_h = False",
                     "quiet = True"
-                    ]
+                    ],
 
 
         "egulp_4dt2":
@@ -168,7 +168,7 @@ fap_dic = {
                     "optim_h = False",
                     "egulp_typed_atoms = True",
                     "quiet = True"
-                    ]
+                    ],
 
         "egulp_4dt3":
                    ["find_maxima = False", 
@@ -201,7 +201,7 @@ fap_dic = {
                     "optim_h = False",
                     "egulp_typed_atoms = True",
                     "quiet = True"
-                    ]
+                    ],
         "egulp_4dt3v1":
                    ["find_maxima = False", 
                     "guests = CO2",
@@ -234,7 +234,7 @@ fap_dic = {
                     "optim_h = False",
                     "egulp_typed_atoms = True",
                     "quiet = True"
-                    ]
+                    ],
 
         "egulp_4dt3v2":
                    ["find_maxima = False", 
