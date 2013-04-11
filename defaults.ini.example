@@ -68,7 +68,7 @@ compare_location_1 =
 compare_location_2 = 
 # set the number of intervals to separate difference data from a comparison
 bin_interval = 
-# which comparison value to use in the .csv file
+# which comparison value to use in the .csv file [eg. mmol/g]
 comparison_value = 
 # location of faps directory
 faps_dir = /home/pboyd/codes_in_development/faps

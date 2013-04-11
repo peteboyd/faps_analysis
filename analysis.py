@@ -406,8 +406,12 @@ class Selector(object):
             else:
                 for key, val in dic.items():
                     self.dataset[bin][key] = self._rank_by_uptake(val)
+                    if isinstance(key, tuple):
+                        name = "-".join([str(i) for i in key])
+                    else:
+                        name = str(key)
                     self.write_dataset(self.dataset[bin][key][:limit],
-                        basename="%s_%s_top_ranked"%(bin,key))
+                        basename="%s_%s_top_ranked"%(bin,name))
 
     def _rank_by_uptake(self, list):
         """Rank by mmol/g uptake."""
@@ -754,8 +758,8 @@ class Selector(object):
         outstream.writelines(header)
         for mof in dataset:
             try:
-                fnl1, fnl2 = self.mof_dic['functional_groups'].keys()
-            except KeyError:
+                fnl1, fnl2 = self.mof_dic[mof]['functional_groups'].keys()
+            except (KeyError, ValueError):
                 fnl1, fnl2 = None, None
             if not fnl1:
                 fnl1 = "None"
@@ -770,7 +774,7 @@ class Selector(object):
                 hoa = self.mof_dic[mof]['hoa']
             except KeyError:
                 hoa = 0.
-            line = "%s,%f,%f,%s,%s"%(mof, uptake, hoa, groups[0], groups[1])
+            line = "%s,%f,%f,%s,%s"%(mof, uptake, hoa, fnl1, fnl2)
             if (self.options.report_ngrid):
                 try:
                     ngrid = self.mof_dic[mof]['ngrid']
@@ -850,7 +854,7 @@ class GrabNewData(object):
         filename = create_csv_filename(basename)
         info("Writing report to %s.csv ..."%(os.path.basename(filename)))
         outstream = open(filename + ".csv", "w")
-        header = "MOFname,mmol/g,hoa/kcal/mol,Functional_grp1,Functional_grp2"
+        header = "MOFname,mmol/g,hoa/kcal/mol,functional_group1,functional_group2"
         if self.extended:
             header += ",grp1_replacements,grp2_replacements"
         if self.options.report_ngrid:
@@ -1007,7 +1011,16 @@ class JobHandler(object):
                 self.options.max_gridpoints < 50:
             warning("The max number of gridpoints was set to %i, "%(
                 self.options.max_gridpoints) + "this is likely too low"
-                + " set max_gridpoints to > 50,000")
+                + " set max_gridpoints to > 50,000.  Will continue anyways..")
+        if self.options.dataset and not self.options.ignore_list:
+            ignore = str(uuid.uuid1())
+            warning("No ignore_list of MOFs chosen, will create a "+
+                    "blank file %s.ignore to use. Remove "%ignore +
+                    "after program termination.")
+            self.options.ignore_list = "%s.ignore"%ignore
+            ignorestream = open("%s.ignore"%ignore, "w")
+            ignorestream.writelines("MOFname,")
+            ignorestream.close()
 
     def _direct_job(self):
         self._check_job_type()
@@ -1199,7 +1212,7 @@ class GetInfo(object):
         filename = create_csv_filename(clean(self.options.csv_info_file))
         info("Writing info file as %s.csv"%(filename))
         csvstream = open(filename+".csv", "w")
-        header = "MOFname,mmol/g,hoa/kcal/mol,Functional_grp1,Functional_grp2\n"
+        header = "MOFname,mmol/g,hoa/kcal/mol,functional_group1,functional_group2\n"
         csvstream.writelines(header)
         for mof in self.moflist:
             try:
