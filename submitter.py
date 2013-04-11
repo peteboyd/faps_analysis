@@ -58,6 +58,10 @@ class CommandLine(object):
                           dest="CHARGE_EGULP_4dt3v1",
                           help="Create submission directories with EGULP "+
                                "parameter set 4dt3v1.")
+        parser.add_option("--egulp4dt3v2", action="store_true",
+                          dest="CHARGE_EGULP_4dt3v2",
+                          help="Create submission directories with EGULP "+
+                               "parameter set 4dt3v2.")
         parser.add_option("--vasp_opt", action="store_true",
                           dest="VASP_OPT",
                           help="Create submission directories to optimize " +
@@ -378,6 +382,8 @@ def main():
                 faplines = "\n".join(fap_dic['egulp_4dt3'])
             elif cmd.options.CHARGE_EGULP_4dt3v1:
                 faplines = "\n".join(fap_dic['egulp_4dt3v1'])
+            elif cmd.options.CHARGE_EGULP_4dt3v2:
+                faplines = "\n".join(fap_dic['egulp_4dt3v2'])
             elif cmd.options.CHARGE_WILMER:
                 faplines = "\n".join(fap_dic['noq_gcmc'])
                 wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
