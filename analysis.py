@@ -98,6 +98,12 @@ class CSV(dict):
         """The CSV dictionary will store data to heading keys"""
         filestream = open(self.filename, "r")
         # burn the header, as it's already read
+        # if the file is empty append zeroes..
+        if self._line_count(self.filename) <= 1: 
+            for ind in range(len(self.headings)):
+                self.setdefault(self.headings[ind], []).append(0.)
+            filestream.close()
+            return
         burn = filestream.readline()
         for line in filestream:
             line = line.lstrip("#").split(",")
@@ -109,6 +115,12 @@ class CSV(dict):
                     pass
                 self.setdefault(self.headings[ind], []).append(entry)
         filestream.close()
+
+    def _line_count(self, filename):
+        with open(filename) as f:
+            for i, l in enumerate(f):
+                pass
+        return i + 1
 
     def _parse_by_mofname(self):
         """The CSV dictionary will have MOFnames as headings and contain
