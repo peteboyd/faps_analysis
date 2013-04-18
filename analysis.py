@@ -195,6 +195,8 @@ class FunctionalGroups(dict):
                 elif len(dic.keys()) == 0:
                     dic[None] = []
                     dic[False] = []
+            else:
+                dic = {None:[], False:[]}
             # check if the entry already exists!
             if self._check_duplicate(mof):
                 if self[mof] == dic:

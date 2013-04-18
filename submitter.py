@@ -249,6 +249,10 @@ def clean(x):
         x = x[:-8]
     if x.endswith(".csv"):
         x = x[:-4]
+    if x.endswith(".out.cif"):
+        x = x[:-8]
+    if x.endswith(".cif"):
+        x = x[:-4]
     return x
 
 def gen_submit_dir(cmd, local_dir, basefile):
@@ -346,22 +350,22 @@ def main():
         os.chdir("%s"%(submit_dir))
         line = line.split(",")[0]
         line = clean(line)
-        if ".sym." in line:
+        if "str" in line:
             #parse the line to get the base stuff
-            stuff = line.split("_")
-            metind = int(stuff[1].lstrip("m"))
-            orgind1 = int(stuff[2].lstrip("o"))
-            orgind2 = int(stuff[3].lstrip("o"))
-            otherstuff = stuff[5].split(".")
-            topology = otherstuff[0]
-            fnl = int(otherstuff[2])
-            # now get the mof from the lookup directory 
-            base_name = "str_m%i_o%i_o%i_f0_%s"%(metind,
-                                                 orgind1,
-                                                 orgind2,
-                                                 topology)
-            dir_name = "met%i%s"%(metind, topology)
-            structname = base_name + ".sym.%i"%(fnl)
+            #stuff = line.split("_")
+            #metind = int(stuff[1].lstrip("m"))
+            #orgind1 = int(stuff[2].lstrip("o"))
+            #orgind2 = int(stuff[3].lstrip("o"))
+            #otherstuff = stuff[5].split(".")
+            #topology = otherstuff[0]
+            #fnl = int(otherstuff[2])
+            # now get the mof from the lookup directory
+            #base_name = "str_m%i_o%i_o%i_f0_%s"%(metind,
+            #                                     orgind1,
+            #                                     orgind2,
+            #                                     topology)
+            #structname = base_name + ".sym.%i"%(fnl)
+            structname = clean(line)
             # create the directory where the new job will be run
             os.makedirs("%s/%s"%(submit_dir, structname))
             # move the new cif file to the new directory
