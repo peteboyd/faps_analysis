@@ -76,7 +76,7 @@ class CommandLine(object):
                           help=".csv file containing all the MOF names for submission.")
         parser.add_option("-d", "--dir", action="store", type="string",
                           dest="lookup_dir", 
-                          default="/shared_scratch/tdaff/GROIN_20130307/FinalCif",
+                          default="/export/home/old_shared_scratch/tdaff/GROIN_20130307/FinalCif",
                           help="Directory containing all the .cif files to "+
                           "copy over to the submission directory")
         (local_options, local_args) = parser.parse_args()
