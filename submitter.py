@@ -244,16 +244,34 @@ def wilmer_cif(structname, submitdir):
     os.remove(submitdir + "/chargecenters.dat")
     return 
 
-def clean(x):
-    if x.endswith("-CO2.csv"):
-        x = x[:-8]
-    if x.endswith(".csv"):
-        x = x[:-4]
-    if x.endswith(".out.cif"):
-        x = x[:-8]
-    if x.endswith(".cif"):
-        x = x[:-4]
-    return x
+def clean(name):
+    if name.startswith('./run_x'):
+        name = name[10:]
+    if name.endswith('.cif'):
+        name = name[:-4]
+    elif name.endswith('.niss'):
+        name = name[:-5]
+    elif name.endswith('.out-CO2.csv'):
+        name = name[:-12]
+    elif name.endswith('-CO2.csv'):
+        name = name[:-8]
+    elif name.endswith('.flog'):
+        name = name[:-5]
+    elif name.endswith('.out.cif'):
+        name = name[:-8]
+    elif name.endswith('.tar'):
+        name = name[:-4]
+    elif name.endswith('.db'):
+        name = name[:-3]
+    elif name.endswith('.faplog'):
+        name = name[:-7]
+    elif name.endswith('.db.bak'):
+        name = name[:-7]
+    elif name.endswith('.csv'):
+        name = name[:-4]
+    elif name.endswith('.out'):
+        name = name[:-4]
+    return name
 
 def gen_submit_dir(cmd, local_dir, basefile):
     if cmd.options.CHARGE_ZERO:
@@ -369,8 +387,12 @@ def main():
             # create the directory where the new job will be run
             os.makedirs("%s/%s"%(submit_dir, structname))
             # move the new cif file to the new directory
-            copyfile("%s/%s.out.cif"%(cmd.options.lookup_dir,structname),
-                     "%s/%s/%s.cif"%(submit_dir, structname, structname))
+            try:
+                copyfile("%s/%s.out.cif"%(cmd.options.lookup_dir,structname),
+                        "%s/%s/%s.cif"%(submit_dir, structname, structname))
+            except IOError:
+                copyfile("%s/%s.cif"%(cmd.options.lookup_dir,structname),
+                        "%s/%s/%s.cif"%(submit_dir, structname, structname))
             # change to the new directory
             os.chdir("%s/%s"%(submit_dir, structname))
             if cmd.options.CHARGE_ZERO:

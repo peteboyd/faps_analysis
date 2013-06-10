@@ -1215,15 +1215,43 @@ class GetInfo(object):
     def __init__(self, options):
         self.options = options
         self.fnl_dic =  FunctionalGroups(self.options.sql_file)
-        self.mof_dic = CSV(self.options.csv_file)
         self.moflist = self._get_list_of_mofs()
+        if self.options.csv_file:
+            self.mof_dic = CSV(self.options.csv_file)
+        else:
+            self.mof_dic = self.get_mof_info()
         pair_mofs_fnl(self.mof_dic, self.fnl_dic)
 
     def _get_list_of_mofs(self):
        return MOFlist(self.options.csv_info_file) 
 
+    def get_mof_info(self):
+        mof_dic = {}
+        try:
+            method = self.options.method
+        except AttributeError:
+            method = ''
+        for root, dirs, files in os.walk(self.options.directory):
+            for mof in self.moflist:
+                search_file = mof+"-CO2.csv"
+                if search_file in files and method in root.split('/'):
+                    data = CSV(os.path.join(root,search_file), _MOFNAME=False)
+                    new_uptake = data.obtain_data("mmol/g",
+                                              temperature=298.0,
+                                              pressure=0.15)
+                    new_hoa = data.obtain_data("heat of adsorption",
+                                           temperature=298.0,
+                                           pressure=0.15)
+                    mof_dic.setdefault(mof, {})
+                    mof_dic[mof]['mmol/g'] = new_uptake
+                    mof_dic[mof]['hoa'] = new_hoa
+        return mof_dic
+
     def write_csv_file(self):
-        filename = create_csv_filename(clean(self.options.csv_info_file))
+        pre_file = clean(self.options.csv_info_file) + "." + \
+                self.options.method if self.options.method \
+                else clean(self.options.csv_info_file)
+        filename = create_csv_filename(pre_file)
         info("Writing info file as %s.csv"%(filename))
         csvstream = open(filename+".csv", "w")
         header = "MOFname,mmol/g,hoa/kcal/mol,functional_group1,functional_group2\n"
@@ -1256,7 +1284,7 @@ class Extract(object):
     """
     def __init__(self, options, mofs):
         self.options = options
-        self.mofs = mofs.copy() 
+        self.mofs = mofs.copy()
         self.fnl_count = {}
         self.fnl_pair = {}
         self.organic_count = {}
@@ -1423,6 +1451,8 @@ class Extract(object):
                    fnl_pair_occur = self.fnl_pair[tuple(pair)]
                except KeyError:
                    fnl_pair_occur = 0
+            else:
+                fnl1, fnl2 = None, None
             met_occur = self.metal_count[met()]
             orgs = sorted([org1(), org2()])
             if len(set(orgs)) == 1:
@@ -1914,6 +1944,8 @@ def clean(name):
     elif name.endswith('.db.bak'):
         name = name[:-7]
     elif name.endswith('.csv'):
+        name = name[:-4]
+    elif name.endswith('.out'):
         name = name[:-4]
     return name
 
