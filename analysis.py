@@ -304,7 +304,7 @@ class Selector(object):
         info("Partial functional groups: %s"%
                 (', '.join(self.options.fnl_partial)))
         info("Weight uptake (gaussian): %s"%self.options.gaussian)
-        info("Max grid points: %i"%self.options.max_gridpoints)
+        info("Max grid points: %s"%str(self.options.max_gridpoints))
         info("Total number of MOFs: %i"%self.options.total_mofs)
         info("Maximum per functional group: %i"%self.options.functional_max)
         info("Maximum per organic linker: %i"%self.options.organic_max)
@@ -531,7 +531,7 @@ class Selector(object):
             # NOTE: this creates a gaussian each instance it's called - 
             # I should implement a pre-computed gaussian curve to reduce 
             # computational expense
-            if not weight_by_gaussian(uptake):
+            if not self.weight_by_gaussian(uptake):
                 debug("%s has an uptake, %4.2f not sampled by the gaussian."%
                         (mof, uptake))
                 return False
@@ -562,8 +562,8 @@ class Selector(object):
                             %(mof))
                     return False
             else:
-                debug("%s contains two functional groups, the fnl_include" +
-                        " list restricts only one per MOF"%(mof))
+                debug("%s contains two functional groups,"%(mof) +  
+                      "the fnl_include list restricts only one per MOF")
                 return False
 
         # 8 - check if the organic linkers are in the EXCLUDE list
@@ -640,6 +640,8 @@ class Selector(object):
                 self.write_dataset(dataset)
                 return
             if self._valid_mof(mof):
+                met, org1, org2, top, junk = parse_mof_data(mof) 
+                (fnl_grp1, fnl_grp2) = self.mof_dic[mof]['functional_groups']
                 org_max = self.check_dictionary_counts(organics_count,
                                                 organic1=org1(),
                                                 organic2=org2())
@@ -717,7 +719,7 @@ class Selector(object):
             dictionary.setdefault(tuple(args), 0)
             dictionary[tuple(args)] += 1
 
-    def weight_by_gaussian(self, uptake, a=1, b=5, c=1.3):
+    def weight_by_gaussian(self, uptake, a=1, b=0.5, c=1.3):
         """Weight according to a gaussian distribution based on uptake.
         Defaults are a distribution amplitude of 1, centered around
         5 mmol/g, smeared by 1.3 (width)"""

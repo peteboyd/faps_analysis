@@ -50,6 +50,7 @@ fap_dic = {
         "vasp_gcmc_sp":
                    ["charge_method = repeat",
                     "dft_code = vasp",
+                    "dispersion = False",
                     "vasp_ncpu = 24",
                     "guests = CO2",
                     "mc_probability_plot = True",
