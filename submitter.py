@@ -385,44 +385,48 @@ def main():
             #structname = base_name + ".sym.%i"%(fnl)
             structname = clean(line)
             # create the directory where the new job will be run
-            os.makedirs("%s/%s"%(submit_dir, structname))
-            # move the new cif file to the new directory
-            try:
-                copyfile("%s/%s.out.cif"%(cmd.options.lookup_dir,structname),
-                        "%s/%s/%s.cif"%(submit_dir, structname, structname))
-            except IOError:
-                copyfile("%s/%s.cif"%(cmd.options.lookup_dir,structname),
-                        "%s/%s/%s.cif"%(submit_dir, structname, structname))
-            # change to the new directory
-            os.chdir("%s/%s"%(submit_dir, structname))
-            if cmd.options.CHARGE_ZERO:
-                charge_zero_cif(structname)
-                faplines = "\n".join(fap_dic['noq_gcmc'])
-            elif cmd.options.CHARGE_EGULP_3:
-                faplines = "\n".join(fap_dic['egulp_3'])
-            elif cmd.options.CHARGE_EGULP_4d:
-                faplines = "\n".join(fap_dic['egulp_4d'])
-            elif cmd.options.CHARGE_EGULP_4dt2:
-                faplines = "\n".join(fap_dic['egulp_4dt2'])
-            elif cmd.options.CHARGE_EGULP_4dt3:
-                faplines = "\n".join(fap_dic['egulp_4dt3'])
-            elif cmd.options.CHARGE_EGULP_4dt3v1:
-                faplines = "\n".join(fap_dic['egulp_4dt3v1'])
-            elif cmd.options.CHARGE_EGULP_4dt3v2:
-                faplines = "\n".join(fap_dic['egulp_4dt3v2'])
-            elif cmd.options.CHARGE_WILMER:
-                faplines = "\n".join(fap_dic['noq_gcmc'])
-                wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
-            elif cmd.options.CHARGE_UFF:
-                faplines = "\n".join(fap_dic['uff_qeq'])
-            elif cmd.options.VASP_OPT:
-                faplines = "\n".join(fap_dic['vasp_opt'])
+            mofdir = os.path.join(submit_dir, structname)
+            if os.path.exists(mofdir):
+                print("MOF directory already exists!, moving to next one.")
             else:
-                faplines = "\n".join(fap_dic['vasp_gcmc_sp'])
-            # create the job info file
-            fapfile = open("%s/%s/%s.fap"%(submit_dir, structname, structname), "w")
-            fapfile.writelines(faplines)
-            fapfile.close()
+                os.makedirs("%s/%s"%(submit_dir, structname))
+                # move the new cif file to the new directory
+                try:
+                    copyfile("%s/%s.out.cif"%(cmd.options.lookup_dir,structname),
+                            "%s/%s/%s.cif"%(submit_dir, structname, structname))
+                except IOError:
+                    copyfile("%s/%s.cif"%(cmd.options.lookup_dir,structname),
+                            "%s/%s/%s.cif"%(submit_dir, structname, structname))
+                # change to the new directory
+                os.chdir("%s/%s"%(submit_dir, structname))
+                if cmd.options.CHARGE_ZERO:
+                    charge_zero_cif(structname)
+                    faplines = "\n".join(fap_dic['noq_gcmc'])
+                elif cmd.options.CHARGE_EGULP_3:
+                    faplines = "\n".join(fap_dic['egulp_3'])
+                elif cmd.options.CHARGE_EGULP_4d:
+                    faplines = "\n".join(fap_dic['egulp_4d'])
+                elif cmd.options.CHARGE_EGULP_4dt2:
+                    faplines = "\n".join(fap_dic['egulp_4dt2'])
+                elif cmd.options.CHARGE_EGULP_4dt3:
+                    faplines = "\n".join(fap_dic['egulp_4dt3'])
+                elif cmd.options.CHARGE_EGULP_4dt3v1:
+                    faplines = "\n".join(fap_dic['egulp_4dt3v1'])
+                elif cmd.options.CHARGE_EGULP_4dt3v2:
+                    faplines = "\n".join(fap_dic['egulp_4dt3v2'])
+                elif cmd.options.CHARGE_WILMER:
+                    faplines = "\n".join(fap_dic['noq_gcmc'])
+                    wilmer_cif(structname, "%s/%s"%(submit_dir,structname))
+                elif cmd.options.CHARGE_UFF:
+                    faplines = "\n".join(fap_dic['uff_qeq'])
+                elif cmd.options.VASP_OPT:
+                    faplines = "\n".join(fap_dic['vasp_opt'])
+                else:
+                    faplines = "\n".join(fap_dic['vasp_gcmc_sp'])
+                # create the job info file
+                fapfile = open("%s/%s/%s.fap"%(submit_dir, structname, structname), "w")
+                fapfile.writelines(faplines)
+                fapfile.close()
     filestream.close()
 
 if __name__ == "__main__":
