@@ -22,6 +22,7 @@ from logging import info, debug, warning, error, critical
 sys.path.append("/home/pboyd/codes_in_development/faps")
 from faps import PyNiss, Structure, Atom, Cell, Guest, Symmetry 
 import pickle
+import stat 
 
 DEG2RAD = pi / 180.0
 ATOM_NUM = [
@@ -637,7 +638,7 @@ class Selector(object):
             except IndexError:
                 warning("Sampled all MOFs without completing list! Writing " + 
                       "output file anyways..")
-                self.write_dataset(dataset)
+                self.write_dataset(self.dataset['master_list'])
                 return
             if self._valid_mof(mof):
                 met, org1, org2, top, junk = parse_mof_data(mof) 
@@ -1010,7 +1011,8 @@ class JobHandler(object):
         if not self.options.combine and not self.options.cmd_opts.combine and\
                 not self.options.dataset and not self.options.report and \
                 not self.options.extract and not self.options.report and not \
-                self.options.comparison and not self.options.csv_info_file:
+                self.options.comparison and not self.options.csv_info_file and \
+                not self.options.chargedos:
             error("no job type requested!")
             sys.exit(1)
 
@@ -1047,7 +1049,7 @@ class JobHandler(object):
             return
         # if combine is requested, skip all this
         if self.options.dataset or self.options.report or \
-                self.options.extract or self.options.report:
+                self.options.extract or self.options.chargedos: 
             # both need a list of MOFs with functional groups
             if not self.options.csv_file:
                 error("no .csv file specified in the input")
@@ -1100,6 +1102,13 @@ class JobHandler(object):
             job = GetInfo(self.options)
             info("Found %i MOFs in the file."%(len(job.moflist)))
             job.write_csv_file()
+        elif self.options.chargedos:
+            dos = GetGaussianDistribution(self.options, self.mofs.keys())
+            name = "%s.%s.dos"%(self.options.method, self.options.dosname)
+            info("Writing charge DOS to %s.csv"%name)
+            dos.write_dos_datafile(name)
+            dos.write_gnuplot_script(name)
+
 
     def extract_report(self):
         """Write a bunch of reports based on the stats of the MOFs in 
@@ -1277,6 +1286,137 @@ class GetInfo(object):
             fnl_2 = fnl_2 if fnl_2 else None
             csvstream.writelines("%s,%f,%f,%s,%s\n"%(mof,mmol_g,hoa,fnl_1,fnl_2))
         csvstream.close()
+
+class GetGaussianDistribution(object):
+    """Perform a gaussian distribution of the charges for a run of MOFs."""
+    def __init__(self, options, mofs):
+        self.mofs = mofs
+        self.options = options
+        self.atom_type_charge = {}
+        self.atom_type_dos = {}
+        self.interval_vals = []
+        self.max_dos = 0
+        self._grab_mofs()
+        self._typewise_dos()
+
+    def _grab_mofs(self):
+        try:
+            method = self.options.method
+        except AttributeError:
+            method = ''
+        for root, dirs, files in os.walk(self.options.directory):
+            for mof in self.mofs:
+                search_file = mof+".out.cif"
+                if search_file in files and method in root.split('/'):
+                    dirmof = os.path.join(root, search_file) 
+                    from_cif = CifFile(dirmof)
+                    types = from_cif['_atom_site_type_symbol']
+                    try:
+                        charges = from_cif['_atom_type_partial_charge']
+                    except KeyError:
+                        charges = from_cif['_atom_type_parital_charge']
+
+                    for type, charge in zip(types, charges):
+                        self.atom_type_charge.setdefault(type, []).append(float(charge))
+
+    def _get_qmax_qmin(self):
+        max, min = 0.,10000000.
+        for type, chargelist in self.atom_type_charge.keys():
+            if chargelist.max() > max:
+                max = chargelist.max()
+            if chargelist.min() < min:
+                min = chargelist.min()
+        return max, min
+
+    def _typewise_dos(self):
+        """Taken from Eugene code"""
+        if not self.options.qmax and self.options.qmin:
+            qmax, qmin = self._get_qmax_qmin()
+        else:
+            qmax, qmin = self.options.qmax, self.options.qmin
+
+        dq = (qmax - qmin) / float(self.options.bin_interval)
+        self.interval_vals = [qmin + i*dq for i in range(self.options.bin_interval)]
+        for type, chargelist in self.atom_type_charge.items():
+            qdos = [0.0 for i in range(self.options.bin_interval)]
+            for vox in range(self.options.bin_interval):
+                q = qmin + vox*dq
+                for charge in chargelist:
+                    if (abs(q - charge) > 0.5):
+                        continue
+                    # hrm. sets sigma himself.  I guess this is Ok.
+                    val = self.normalized_gaussian(q, charge, 0.06)
+                    qdos[vox] += val
+            norm = float(len(chargelist))
+            self.atom_type_dos[type] = [i/norm for i in qdos]
+            if max(self.atom_type_dos[type]) > self.max_dos:
+                self.max_dos = max(self.atom_type_dos[type])
+
+    def normalized_gaussian(self, en, en0, sigma):
+        coef = 1./(sigma*((2.0*pi)**0.5))
+        return (coef*exp(-(en-en0)*(en-en0)/(2.0*sigma*sigma)))
+
+    def write_dos_datafile(self, name):
+        file = open(name+".csv", 'w')
+        header = "#charge,"
+        header += ",".join([atm for atm in self.atom_type_charge.keys()])
+        header += "\n"
+        file.writelines(header)
+        for xint in range(self.options.bin_interval):
+            intval = self.interval_vals[xint]
+            line = "%10.6f"%(intval)
+            for atm, dos in self.atom_type_dos.items():
+                line += ",%10.6f"%(dos[xint])
+            line += "\n"
+            file.writelines(line)
+
+    def write_gnuplot_script(self, name):
+        f = open("%s.sh"%name, 'w')
+        style_dict = {"C":"ls 5" , "O":"ls 6", "H":"ls 2", "N": "ls 4", "V":"ls 1", "Cu":"ls 8", "S":"ls 14", "F":"ls 7",
+                "I":"ls 9", "Br":"ls 10", "Zn": "ls 11", "Cl": "ls 12", "Ge": "ls 13", "Si": "ls 8", "P": "ls 14" }
+        line = "file=\"" + "set output '%s.png'\n"%(name)
+        line += "set terminal pngcairo enhanced\n"
+        line += "set encoding iso\n"
+        line += "set view 0.0,0.0\n"
+        line += "set size 1.0,0.50\n"
+        line += "set key right top\n"
+        line += "set style fill transparent solid 0.50\n"
+        line += "set style line 1 lc rgb 'purple' lw 2.0\n"
+        line += "set style line 2 lc rgb 'black' lw 2.0\n"
+        line += "set style line 3 lc rgb 'orange' lw 2.0\n"
+        line += "set style line 4 lc rgb 'blue' lw 2.0\n"
+        line += "set style line 5 lc rgb 'gray' lw 2.0\n"
+        line += "set style line 6 lc rgb 'red' lw 2.0\n"
+        line += "set style line 7 lc rgb '#7FFFD4' lw 2.0\n" # aquamarine
+        line += "set style line 8 lc rgb '#B8860B' lw 2.0\n" # darkgoldenrod
+        line += "set style line 9 lc rgb '#D2691E' lw 2.0\n" # chocolate
+        line += "set style line 10 lc rgb '#B22222' lw 2.0\n" # firebrick
+        line += "set style line 11 lc rgb '#1E90FF' lw 2.0\n" # dodgerblue
+        line += "set style line 12 lc rgb '#00CED1' lw 2.0\n" # darkturquoise
+        line += "set style line 13 lc rgb '#556B2F' lw 2.0\n" # darkolivegreen
+        line += "set style line 14 lc rgb '#DAA520' lw 2.0\n" # goldenrod 
+        line += "set style line 15 lc rgb '#FF69B4' lw 2.0\n" # hotpink 
+        line += "set format x '%3.2f'\n"
+        line += "set xlabel 'CHARGES'\n"
+        line += "set xrange [-2.0:2.0]\n"
+        line += "set ylabel 'DENSITY OF CHARGES'\n"
+        line += "set yrange [0:%18.5f]\n"%(self.max_dos)
+        line += "set datafile separator ','\n"
+        line += "plot\\\\\n"
+        for ind, i in enumerate(self.atom_type_charge.keys()):
+            line += "'%s.csv' u (\$1):%i t '%s' with filledcurves %s"%(name, ind+2, i, style_dict[i])
+            if ind+1 < len(self.atom_type_charge.keys()):
+                line += ",\\\\\n"
+            else:
+                line += "\n"
+
+        line += "quit;\"\n"
+        line += "echo \"${file}\" > in\n"
+        line += "gnuplot < in\n"
+        line += "rm in"
+        f.writelines(line)
+        f.close()
+        os.chmod('%s.sh'%(name), stat.S_IRWXU)
 
 class Extract(object):
     """Extract as much information from a list of mofnames, and provide
@@ -1845,6 +1985,8 @@ class CifFile(object):
         cifstream.close()
         return cifdata 
 
+    def __getitem__(self, item):
+        return self.mofdata[item]
 
 def parse_mof_data(mofname):
     mofname = clean(mofname)
