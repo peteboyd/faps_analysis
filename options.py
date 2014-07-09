@@ -158,7 +158,7 @@ class Options(object):
         if key == 'report' or key == 'extract' or key == 'dataset' or\
                 key == 'top_ranked' or key == 'random' or \
                 key == 'gaussian' or key == 'report_ngrid' or \
-                key == 'comparison':
+                key == 'comparison' or key == 'chargedos':
             try:
                 val = self.job.getboolean(section, key)
             except ValueError:
@@ -173,7 +173,7 @@ class Options(object):
             except ValueError:
                 val = 0
         # known floats
-        elif key == 'uptake_cutoff':
+        elif key == 'uptake_cutoff' or key == 'qmax' or key == 'qmin':
             try:
                 val = self.job.getfloat(section, key)
             except ValueError:
