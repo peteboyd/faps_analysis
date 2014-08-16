@@ -1373,7 +1373,7 @@ class GetGaussianDistribution(object):
     def write_gnuplot_script(self, name):
         f = open("%s.sh"%name, 'w')
         style_dict = {"C":"ls 5" , "O":"ls 6", "H":"ls 2", "N": "ls 4", "V":"ls 1", "Cu":"ls 8", "S":"ls 14", "F":"ls 7",
-                "I":"ls 9", "Br":"ls 10", "Zn": "ls 11", "Cl": "ls 12", "Ge": "ls 13", "Si": "ls 8", "P": "ls 14" }
+                "I":"ls 9", "Br":"ls 10", "Zn": "ls 11", "Cl": "ls 12", "Ge": "ls 13", "Si": "ls 16", "P": "ls 15" }
         line = "file=\"" + "set output '%s.png'\n"%(name)
         line += "set terminal pngcairo enhanced\n"
         line += "set encoding iso\n"
@@ -1393,9 +1393,10 @@ class GetGaussianDistribution(object):
         line += "set style line 10 lc rgb '#B22222' lw 2.0\n" # firebrick
         line += "set style line 11 lc rgb '#1E90FF' lw 2.0\n" # dodgerblue
         line += "set style line 12 lc rgb '#00CED1' lw 2.0\n" # darkturquoise
-        line += "set style line 13 lc rgb '#556B2F' lw 2.0\n" # darkolivegreen
-        line += "set style line 14 lc rgb '#DAA520' lw 2.0\n" # goldenrod 
-        line += "set style line 15 lc rgb '#FF69B4' lw 2.0\n" # hotpink 
+        line += "set style line 13 lc rgb '#006400' lw 2.0\n" # darkgreen
+        line += "set style line 14 lc rgb '#FFFF00' lw 2.0\n" # yellow
+        line += "set style line 15 lc rgb '#DA70D6' lw 2.0\n" # orchid 
+        line += "set style line 16 lc rgb '#FFD700' lw 2.0\n" # gold 
         line += "set format x '%3.2f'\n"
         line += "set xlabel 'CHARGES'\n"
         line += "set xrange [-2.0:2.0]\n"
